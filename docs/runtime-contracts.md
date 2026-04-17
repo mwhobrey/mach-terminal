@@ -108,8 +108,22 @@ This document defines the first stable contract between the frontend shell and R
 - Provider execution is blocked unless:
   - `provider_routing.ai_feature_enabled` is true
   - selected provider is explicitly enabled
+- Routing writes are validated:
+  - `default_provider` must reference a configured provider id
+  - `ollama_model` cannot be blank after trimming
+- Provider endpoint writes are sanity-checked:
+  - endpoint is optional (`null`/empty clears)
+  - when provided, endpoint must be an absolute `http` or `https` URL
 - Initial execution adapter:
   - `ollama` via `POST /api/generate` with `stream=false`
+- Standardized AI failure buckets surfaced by backend messages:
+  - routing disabled
+  - provider not configured
+  - provider disabled
+  - invalid endpoint
+  - endpoint unreachable
+  - upstream error response
+  - response decode failure
 
 ## Plugin Host Rules
 

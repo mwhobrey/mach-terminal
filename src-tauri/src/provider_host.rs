@@ -2,8 +2,9 @@ use crate::models::{
     AiExecuteRequest, AiExecuteResponse, AppSettings, ProviderDescriptor, ProviderRoutingSettings,
     ProviderSettings,
 };
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::time::Duration;
 use tracing::{info, instrument, warn};
 
@@ -57,13 +58,82 @@ pub fn provider_descriptors(providers: &[ProviderSettings]) -> Vec<ProviderDescr
 }
 
 fn resolve_provider(settings: &AppSettings, requested: Option<&str>) -> Result<ProviderSettings, String> {
-    let route_to = requested.unwrap_or(&settings.provider_routing.default_provider);
+    let route_to = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(settings.provider_routing.default_provider.as_str());
     settings
         .providers
         .iter()
         .find(|provider| provider.id == route_to)
         .cloned()
-        .ok_or_else(|| format!("provider `{route_to}` is not configured"))
+        .ok_or_else(|| AiExecutionError::ProviderNotConfigured(route_to.to_string()).to_string())
+}
+
+#[derive(Debug)]
+enum AiExecutionError {
+    RoutingDisabled,
+    ProviderNotConfigured(String),
+    ProviderDisabled(String),
+    ProviderAdapterMissing(String),
+    InvalidEndpoint(String),
+    EndpointUnreachable(String),
+    UpstreamStatus(String),
+    DecodeFailure(String),
+}
+
+impl fmt::Display for AiExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AiExecutionError::RoutingDisabled => write!(
+                f,
+                "AI routing is disabled. Enable AI opt-in in provider routing settings before sending AI requests."
+            ),
+            AiExecutionError::ProviderNotConfigured(provider_id) => {
+                write!(f, "Provider `{provider_id}` is not configured.")
+            }
+            AiExecutionError::ProviderDisabled(provider_id) => write!(
+                f,
+                "Provider `{provider_id}` is disabled. Enable it in settings before sending AI requests."
+            ),
+            AiExecutionError::ProviderAdapterMissing(provider_id) => write!(
+                f,
+                "Provider `{provider_id}` is configured but has no execution adapter yet."
+            ),
+            AiExecutionError::InvalidEndpoint(message) => {
+                write!(f, "Provider endpoint is invalid. {message}")
+            }
+            AiExecutionError::EndpointUnreachable(message) => {
+                write!(f, "Provider endpoint is unreachable. {message}")
+            }
+            AiExecutionError::UpstreamStatus(message) => {
+                write!(f, "Provider returned an error response. {message}")
+            }
+            AiExecutionError::DecodeFailure(message) => {
+                write!(f, "Provider response could not be decoded. {message}")
+            }
+        }
+    }
+}
+
+fn normalize_ollama_base_url(provider: &ProviderSettings) -> Result<Url, AiExecutionError> {
+    let endpoint = provider
+        .endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http://127.0.0.1:11434");
+    let parsed = Url::parse(endpoint)
+        .map_err(|error| AiExecutionError::InvalidEndpoint(format!("`{endpoint}` ({error})")))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(AiExecutionError::InvalidEndpoint(format!(
+                "`{endpoint}` uses unsupported scheme `{scheme}` (expected http or https)"
+            )))
+        }
+    }
+    Ok(parsed)
 }
 
 #[instrument(skip(client, provider, routing, prompt))]
@@ -73,10 +143,13 @@ async fn run_ollama(
     routing: &ProviderRoutingSettings,
     prompt: &str,
 ) -> Result<String, String> {
-    let endpoint = provider
-        .endpoint
-        .clone()
-        .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+    let base_url = normalize_ollama_base_url(provider).map_err(|error| error.to_string())?;
+    let generate_url = base_url
+        .join("/api/generate")
+        .map_err(|error| {
+            AiExecutionError::InvalidEndpoint(format!("failed to construct Ollama generate endpoint ({error})"))
+        })
+        .map_err(|error| error.to_string())?;
     let request = OllamaGenerateRequest {
         model: routing.ollama_model.clone(),
         prompt: prompt.to_string(),
@@ -84,21 +157,27 @@ async fn run_ollama(
     };
 
     let response = client
-        .post(format!("{endpoint}/api/generate"))
+        .post(generate_url)
         .json(&request)
         .send()
         .await
-        .map_err(|error| format!("ollama request failed: {error}"))?;
+        .map_err(|error| {
+            if error.is_connect() || error.is_timeout() {
+                AiExecutionError::EndpointUnreachable(error.to_string()).to_string()
+            } else {
+                AiExecutionError::UpstreamStatus(error.to_string()).to_string()
+            }
+        })?;
 
     let response = response
         .error_for_status()
-        .map_err(|error| format!("ollama returned error status: {error}"))?;
+        .map_err(|error| AiExecutionError::UpstreamStatus(error.to_string()).to_string())?;
 
     response
         .json::<OllamaGenerateResponse>()
         .await
         .map(|payload| payload.response)
-        .map_err(|error| format!("failed to decode ollama response: {error}"))
+        .map_err(|error| AiExecutionError::DecodeFailure(error.to_string()).to_string())
 }
 
 pub async fn execute_ai_request(
@@ -107,15 +186,12 @@ pub async fn execute_ai_request(
     request: &AiExecuteRequest,
 ) -> Result<AiExecuteResponse, String> {
     if !settings.provider_routing.ai_feature_enabled {
-        return Err("AI routing is disabled. Enable it in provider routing settings first.".to_string());
+        return Err(AiExecutionError::RoutingDisabled.to_string());
     }
 
     let provider = resolve_provider(settings, request.provider_id.as_deref())?;
     if !provider.enabled {
-        return Err(format!(
-            "Provider `{}` is disabled. Enable it before sending AI requests.",
-            provider.id
-        ));
+        return Err(AiExecutionError::ProviderDisabled(provider.id.clone()).to_string());
     }
 
     info!(provider_id = provider.id, "executing ai request");
@@ -123,10 +199,7 @@ pub async fn execute_ai_request(
         "ollama" => run_ollama(client, &provider, &settings.provider_routing, &request.prompt).await?,
         _ => {
             warn!(provider_id = provider.id, "provider configured without execution adapter");
-            return Err(format!(
-                "Provider `{}` is configured but has no execution adapter yet.",
-                provider.id
-            ))
+            return Err(AiExecutionError::ProviderAdapterMissing(provider.id).to_string());
         }
     };
 

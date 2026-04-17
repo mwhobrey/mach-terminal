@@ -635,6 +635,24 @@ h1 {
   padding: 0.45rem 0.55rem;
 }
 
+.stacked-controls select {
+  border: 1px solid #334155;
+  background: #020617;
+  color: #cbd5e1;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.inline-input {
+  border: 1px solid #334155;
+  background: #020617;
+  color: #cbd5e1;
+  border-radius: 8px;
+  padding: 0.32rem 0.5rem;
+  min-width: 9.5rem;
+  font-size: 0.76rem;
+}
+
 .muted-block {
   margin: 0;
   color: #94a3b8;

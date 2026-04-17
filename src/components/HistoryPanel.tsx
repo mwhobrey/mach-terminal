@@ -4,6 +4,7 @@ import type { HistoryEntry } from "../core/terminal";
 interface HistoryPanelProps {
   entries: HistoryEntry[];
   loading: boolean;
+  aiBusy: boolean;
   error: string | null;
   actionStatus: string | null;
   onReplay: (command: string) => void;
@@ -23,7 +24,7 @@ function truncateCommand(command: string, maxLength: number): string {
   return `${command.slice(0, maxLength - 1)}…`;
 }
 
-export function HistoryPanel({ entries, loading, error, actionStatus, onReplay, onExplain, onFix }: HistoryPanelProps) {
+export function HistoryPanel({ entries, loading, aiBusy, error, actionStatus, onReplay, onExplain, onFix }: HistoryPanelProps) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
     if (!query.trim()) {
@@ -59,10 +60,10 @@ export function HistoryPanel({ entries, loading, error, actionStatus, onReplay, 
                 <button type="button" className="inline-btn" onClick={() => onReplay(entry.command)}>
                   replay
                 </button>
-                <button type="button" className="inline-btn" onClick={() => onExplain(entry.command)}>
+                <button type="button" className="inline-btn" onClick={() => onExplain(entry.command)} disabled={aiBusy}>
                   explain
                 </button>
-                <button type="button" className="inline-btn" onClick={() => onFix(entry.command)}>
+                <button type="button" className="inline-btn" onClick={() => onFix(entry.command)} disabled={aiBusy}>
                   fix
                 </button>
               </div>

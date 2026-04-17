@@ -22,14 +22,13 @@ import {
 } from "./core/sessionCwd";
 import { collectExitedSessionIds } from "./core/sessionTabStatus";
 import { commandToTerminalUiIntent } from "./core/terminalCommandRouting";
+import { canRunAiRequest } from "./core/providerUiState";
 import type { TerminalUiRequest } from "./core/terminalUiRequest";
 import { DEFAULT_KEYMAP, formatShortcut, matchShortcut } from "./core/keymap";
 import { drainChunksUpToByteBudget, nextSequenceState, SEQUENCE_LARGE_JUMP } from "./core/ptyOutputCoalesce";
 import { PLUGIN_REGISTRY } from "./core/plugins";
-import { PROVIDER_REGISTRY, type ProviderDescriptor } from "./core/providers";
 import { DEFAULT_RUNTIME_CAPABILITIES, type RuntimeCapabilities } from "./core/runtime";
 import {
-  aiExecute,
   historyQuery,
   historyRecoveryTake,
   historyReplay,
@@ -42,8 +41,6 @@ import {
   profileGet,
   providerList,
   providerRoutingGet,
-  providerRoutingSet,
-  providerSetEnabled,
   runtimeDebugSnapshot,
   runtimeMetricsSnapshot,
   settingsSchemaDump,
@@ -52,9 +49,7 @@ import {
   ptyResize,
   ptySpawn,
   ptyWrite,
-  type AiContextEvent,
   type HistoryEntry,
-  type ProviderRoutingSettings,
   type PtyLifecycleEvent,
   type PtySessionInfo,
   type RuntimeMetricsSnapshot,
@@ -77,6 +72,7 @@ import {
   type WorkspaceSnapshot,
   type WorkspaceState,
 } from "./state/workspace";
+import { useProviderAiState } from "./hooks/useProviderAiState";
 
 const MAX_SESSION_BUFFER = 120_000;
 /** Max UTF-16 units applied to xterm per animation frame per session (remainder stays queued). */
@@ -113,20 +109,11 @@ function App() {
    * profile default, matching pre-tranche behavior.
    */
   const [sessionCwd, setSessionCwd] = useState<SessionCwdMap>({});
-  const [providers, setProviders] = useState<ProviderDescriptor[]>(PROVIDER_REGISTRY);
-  const [routing, setRouting] = useState<ProviderRoutingSettings>({
-    default_provider: "ollama",
-    ollama_model: "llama3.2",
-    ai_feature_enabled: false,
-  });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyActionStatus, setHistoryActionStatus] = useState<string | null>(null);
-  const [aiPrompt, setAiPrompt] = useState("summarize last command");
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
-  const [lastAiContext, setLastAiContext] = useState<AiContextEvent | null>(null);
   const [pluginResult, setPluginResult] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string>(UPDATER_ENABLED ? "idle" : "disabled (build flag)");
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -144,6 +131,51 @@ function App() {
   const lastSequenceRef = useRef<Record<string, number>>({});
   const resizeThrottleRef = useRef<Record<string, number>>({});
   const layoutPersistBootstrappedRef = useRef(false);
+
+  const sessionsById = useMemo(
+    () =>
+      sessions.reduce<Record<string, PtySessionInfo>>((lookup, session) => {
+        lookup[session.id] = session;
+        return lookup;
+      }, {}),
+    [sessions],
+  );
+
+  const activeSessionId = useMemo(() => {
+    const activePane = workspace.panes.find((pane) => pane.id === workspace.activePaneId);
+    return activePane?.sessionId ?? null;
+  }, [workspace]);
+
+  const activeSession = activeSessionId ? sessionsById[activeSessionId] : undefined;
+
+  const {
+    providers,
+    routing,
+    routingDraft,
+    providerEndpointDrafts,
+    providerConfigStatus,
+    aiPrompt,
+    aiResponse,
+    aiRequestInFlight,
+    aiRequestStatus,
+    lastAiContext,
+    initializeProviderAiState,
+    setRoutingDraft,
+    updateProviderEndpointDraft,
+    setAiPrompt,
+    setLastAiContext,
+    toggleProvider,
+    saveProviderEndpoint,
+    saveRoutingConfig,
+    setAiOptIn,
+    runAiPrompt,
+    explainCommand,
+    fixCommand,
+  } = useProviderAiState({
+    activeSession,
+    onRuntimeError: (message) => setRuntimeError(message),
+    onHistoryActionStatus: (status) => setHistoryActionStatus(status),
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -168,8 +200,7 @@ function App() {
           profileGet(),
         ]);
         setCapabilities(runtime);
-        setProviders(providerDescriptors);
-        setRouting(providerRouting);
+        initializeProviderAiState(providerDescriptors, providerRouting);
         setTerminalFontSize(initialProfile.font_size);
         setSessions(existingSessions);
         const existingSessionIds = existingSessions.map((session) => session.id);
@@ -399,22 +430,6 @@ function App() {
     setSessionCwd((current) => pruneCwdForSessions(current, aliveIds));
   }, [sessions]);
 
-  const sessionsById = useMemo(
-    () =>
-      sessions.reduce<Record<string, PtySessionInfo>>((lookup, session) => {
-        lookup[session.id] = session;
-        return lookup;
-      }, {}),
-    [sessions],
-  );
-
-  const activeSessionId = useMemo(() => {
-    const activePane = workspace.panes.find((pane) => pane.id === workspace.activePaneId);
-    return activePane?.sessionId ?? null;
-  }, [workspace]);
-
-  const activeSession = activeSessionId ? sessionsById[activeSessionId] : undefined;
-
   /**
    * Spawn a shell into the currently-active pane. When `cwdOverride` is provided,
    * the user's profile `cwd` is replaced with it for this one spawn only
@@ -506,49 +521,6 @@ function App() {
     }
   }, []);
 
-  const toggleProvider = useCallback(
-    async (providerId: string, enabled: boolean) => {
-      try {
-        await providerSetEnabled(providerId, enabled);
-        const providerDescriptors = await providerList();
-        setProviders(providerDescriptors);
-      } catch (error) {
-        setRuntimeError(error instanceof Error ? error.message : "Failed to update provider settings.");
-      }
-    },
-    [],
-  );
-
-  const setAiOptIn = useCallback(
-    async (enabled: boolean) => {
-      try {
-        const updated = await providerRoutingSet({ ...routing, ai_feature_enabled: enabled });
-        setRouting(updated);
-      } catch (error) {
-        setRuntimeError(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
-      }
-    },
-    [routing],
-  );
-
-  const runAiPrompt = useCallback(async () => {
-    if (!activeSession) {
-      setRuntimeError("No active session selected for AI prompt.");
-      return;
-    }
-    try {
-      const response = await aiExecute({
-        session_id: activeSession.id,
-        prompt: aiPrompt,
-        provider_id: routing.default_provider,
-      });
-      setAiResponse(response.output);
-    } catch (error) {
-      setAiResponse(null);
-      setRuntimeError(error instanceof Error ? error.message : "AI execution failed.");
-    }
-  }, [activeSession, aiPrompt, routing.default_provider]);
-
   const refreshHistory = useCallback(async () => {
     setHistoryLoading(true);
     setHistoryError(null);
@@ -621,54 +593,6 @@ function App() {
     [activeSession],
   );
 
-  const explainCommand = useCallback(
-    async (command: string) => {
-      if (!activeSession) {
-        return;
-      }
-      setHistoryActionStatus("Generating AI explanation...");
-      const prompt = `Explain this shell command:\n${command}`;
-      setAiPrompt(prompt);
-      try {
-        const response = await aiExecute({
-          session_id: activeSession.id,
-          prompt,
-          provider_id: routing.default_provider,
-        });
-        setAiResponse(response.output);
-        setHistoryActionStatus("AI explanation ready.");
-      } catch (error) {
-        setRuntimeError(error instanceof Error ? error.message : "AI explain failed.");
-        setHistoryActionStatus("AI explanation failed.");
-      }
-    },
-    [activeSession, routing.default_provider],
-  );
-
-  const fixCommand = useCallback(
-    async (command: string) => {
-      if (!activeSession) {
-        return;
-      }
-      setHistoryActionStatus("Generating safer command suggestion...");
-      const prompt = `Provide a safer or corrected version of this command, with a short explanation:\n${command}`;
-      setAiPrompt(prompt);
-      try {
-        const response = await aiExecute({
-          session_id: activeSession.id,
-          prompt,
-          provider_id: routing.default_provider,
-        });
-        setAiResponse(response.output);
-        setHistoryActionStatus("AI fix suggestion ready.");
-      } catch (error) {
-        setRuntimeError(error instanceof Error ? error.message : "AI fix failed.");
-        setHistoryActionStatus("AI fix failed.");
-      }
-    },
-    [activeSession, routing.default_provider],
-  );
-
   const runPluginDemo = useCallback(async () => {
     try {
       await pluginGrantCapability("history-tools", "command-history.read");
@@ -685,10 +609,9 @@ function App() {
       providerRoutingGet(),
       profileGet(),
     ]);
-    setProviders(providerDescriptors);
-    setRouting(providerRouting);
+    initializeProviderAiState(providerDescriptors, providerRouting);
     setTerminalFontSize(profile.font_size);
-  }, []);
+  }, [initializeProviderAiState]);
 
   const checkForUpdates = useCallback(async () => {
     if (!UPDATER_ENABLED) {
@@ -992,6 +915,7 @@ function App() {
 
           <section>
             <h2>Providers (disabled by default)</h2>
+            {providerConfigStatus ? <p className="muted-block">{providerConfigStatus}</p> : null}
             <ul>
               {providers.map((provider) => (
                 <li key={provider.id}>
@@ -1006,6 +930,16 @@ function App() {
                     className="inline-btn"
                   >
                     {provider.enabled ? "disable" : "enable"}
+                  </button>
+                  <input
+                    value={providerEndpointDrafts[provider.id] ?? ""}
+                    onChange={(event) => updateProviderEndpointDraft(provider.id, event.currentTarget.value)}
+                    placeholder="Endpoint URL"
+                    className="inline-input"
+                    aria-label={`${provider.id} endpoint`}
+                  />
+                  <button type="button" className="inline-btn ghost" onClick={() => void saveProviderEndpoint(provider.id)}>
+                    save endpoint
                   </button>
                 </li>
               ))}
@@ -1054,6 +988,29 @@ function App() {
           <section>
             <h2>AI Router (v0)</h2>
             <div className="stacked-controls">
+              <label className="field-row">
+                <span>Default provider</span>
+                <select
+                  value={routingDraft.default_provider}
+                  onChange={(event) => setRoutingDraft((current) => ({ ...current, default_provider: event.currentTarget.value }))}
+                >
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name} ({provider.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-row">
+                <span>Ollama model</span>
+                <input
+                  value={routingDraft.ollama_model}
+                  onChange={(event) => setRoutingDraft((current) => ({ ...current, ollama_model: event.currentTarget.value }))}
+                />
+              </label>
+              <button type="button" className="inline-btn ghost" onClick={() => void saveRoutingConfig()}>
+                save routing config
+              </button>
               <label className="toggle-row">
                 <input
                   type="checkbox"
@@ -1063,9 +1020,20 @@ function App() {
                 AI opt-in required
               </label>
               <input value={aiPrompt} onChange={(event) => setAiPrompt(event.currentTarget.value)} />
-              <button type="button" className="inline-btn" onClick={() => void runAiPrompt()}>
-                run ai prompt
+              <button
+                type="button"
+                className="inline-btn"
+                onClick={() => void runAiPrompt()}
+                disabled={!canRunAiRequest(routing.ai_feature_enabled, aiRequestInFlight)}
+              >
+                {aiRequestInFlight ? "running..." : "run ai prompt"}
               </button>
+              {!routing.ai_feature_enabled ? (
+                <p className="muted-block">
+                  AI requests are blocked until you enable AI opt-in. Provider endpoints and routing can still be configured.
+                </p>
+              ) : null}
+              {aiRequestStatus ? <p className="muted-block">{aiRequestStatus}</p> : null}
               {aiResponse ? <p className="muted-block">{aiResponse}</p> : null}
               {lastAiContext ? (
                 <p className="muted-block">
@@ -1078,6 +1046,7 @@ function App() {
           <HistoryPanel
             entries={historyEntries}
             loading={historyLoading}
+            aiBusy={aiRequestInFlight}
             error={historyError}
             actionStatus={historyActionStatus}
             onReplay={(command) => void replayCommand(command)}

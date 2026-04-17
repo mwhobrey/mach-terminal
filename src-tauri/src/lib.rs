@@ -2,7 +2,7 @@ pub mod models;
 pub mod history_store;
 pub mod osc7;
 mod plugin_host;
-mod provider_host;
+pub mod provider_host;
 pub mod session_manager;
 pub mod settings;
 mod terminal_core;

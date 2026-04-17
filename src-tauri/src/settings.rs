@@ -2,6 +2,7 @@ use crate::models::{
     AppSettings, LegacyAppSettings, ProfilePatch, ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings,
     SettingsSchemaDebug, TerminalProfile, SETTINGS_SCHEMA_VERSION,
 };
+use reqwest::Url;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -9,6 +10,61 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
+
+const KNOWN_PROVIDER_IDS: [&str; 4] = ["openai", "anthropic", "ollama", "custom-openai"];
+
+fn provider_exists(providers: &[ProviderSettings], provider_id: &str) -> bool {
+    providers.iter().any(|provider| provider.id == provider_id)
+}
+
+fn validate_provider_id(provider_id: &str) -> Result<(), String> {
+    if KNOWN_PROVIDER_IDS.contains(&provider_id) {
+        Ok(())
+    } else {
+        Err(format!("unknown provider `{provider_id}`"))
+    }
+}
+
+fn validate_provider_endpoint(endpoint: &str) -> Result<(), String> {
+    let parsed = Url::parse(endpoint).map_err(|error| format!("endpoint must be a valid URL ({error})"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        other => Err(format!("endpoint scheme `{other}` is unsupported; use http or https")),
+    }
+}
+
+fn normalize_provider_endpoint_input(endpoint: Option<String>) -> Result<Option<String>, String> {
+    match endpoint {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            validate_provider_endpoint(trimmed)?;
+            Ok(Some(trimmed.to_string()))
+        }
+        None => Ok(None),
+    }
+}
+
+fn validate_provider_routing(
+    providers: &[ProviderSettings],
+    routing: &ProviderRoutingSettings,
+) -> Result<(), String> {
+    if routing.default_provider.trim().is_empty() {
+        return Err("provider routing default_provider cannot be empty".to_string());
+    }
+    if !provider_exists(providers, routing.default_provider.as_str()) {
+        return Err(format!(
+            "provider routing default_provider `{}` is not configured",
+            routing.default_provider
+        ));
+    }
+    if routing.ollama_model.trim().is_empty() {
+        return Err("provider routing ollama_model cannot be empty".to_string());
+    }
+    Ok(())
+}
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     let base_dir = app
@@ -275,18 +331,40 @@ pub fn set_provider_settings(
     app: &AppHandle,
     providers: Vec<ProviderSettings>,
 ) -> Result<Vec<ProviderSettings>, String> {
+    for provider in &providers {
+        validate_provider_id(provider.id.as_str())?;
+        if let Some(endpoint) = provider.endpoint.as_deref() {
+            validate_provider_endpoint(endpoint)?;
+        }
+    }
+    if let Some(duplicate) = providers.iter().map(|provider| provider.id.as_str()).find(|provider_id| {
+        providers
+            .iter()
+            .filter(|provider| provider.id.as_str() == *provider_id)
+            .count()
+            > 1
+    }) {
+        return Err(format!("duplicate provider id `{duplicate}` in provider settings"));
+    }
     update_settings(app, |settings| {
         settings.providers = providers.clone();
+        validate_provider_routing(&settings.providers, &settings.provider_routing)?;
         Ok(providers)
     })
 }
 
 pub fn set_provider_enabled(app: &AppHandle, provider_id: &str, enabled: bool) -> Result<Vec<ProviderSettings>, String> {
+    validate_provider_id(provider_id)?;
     update_settings(app, |settings| {
+        let mut updated = false;
         for provider in &mut settings.providers {
             if provider.id == provider_id {
                 provider.enabled = enabled;
+                updated = true;
             }
+        }
+        if !updated {
+            return Err(format!("provider `{provider_id}` is not configured"));
         }
         Ok(settings.providers.clone())
     })
@@ -297,8 +375,13 @@ pub fn set_provider_endpoint(
     provider_id: &str,
     endpoint: Option<String>,
 ) -> Result<Vec<ProviderSettings>, String> {
+    validate_provider_id(provider_id)?;
+    let normalized_endpoint = normalize_provider_endpoint_input(endpoint)?;
     update_settings(app, |settings| {
-        apply_provider_endpoint_patch(&mut settings.providers, provider_id, endpoint.clone());
+        if !provider_exists(&settings.providers, provider_id) {
+            return Err(format!("provider `{provider_id}` is not configured"));
+        }
+        apply_provider_endpoint_patch(&mut settings.providers, provider_id, normalized_endpoint.clone());
         Ok(settings.providers.clone())
     })
 }
@@ -311,9 +394,15 @@ pub fn set_provider_routing(
     app: &AppHandle,
     provider_routing: ProviderRoutingSettings,
 ) -> Result<ProviderRoutingSettings, String> {
+    let normalized_routing = ProviderRoutingSettings {
+        default_provider: provider_routing.default_provider.trim().to_string(),
+        ollama_model: provider_routing.ollama_model.trim().to_string(),
+        ai_feature_enabled: provider_routing.ai_feature_enabled,
+    };
     update_settings(app, |settings| {
-        settings.provider_routing = provider_routing.clone();
-        Ok(provider_routing)
+        validate_provider_routing(&settings.providers, &normalized_routing)?;
+        settings.provider_routing = normalized_routing.clone();
+        Ok(normalized_routing)
     })
 }
 
@@ -323,6 +412,9 @@ pub fn patch_provider_routing(
 ) -> Result<ProviderRoutingSettings, String> {
     update_settings(app, |settings| {
         apply_provider_routing_patch(&mut settings.provider_routing, &patch);
+        settings.provider_routing.default_provider = settings.provider_routing.default_provider.trim().to_string();
+        settings.provider_routing.ollama_model = settings.provider_routing.ollama_model.trim().to_string();
+        validate_provider_routing(&settings.providers, &settings.provider_routing)?;
         Ok(settings.provider_routing.clone())
     })
 }
