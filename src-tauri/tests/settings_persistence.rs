@@ -1,4 +1,4 @@
-use mach_terminal_lib::models::{AppSettings, SETTINGS_SCHEMA_VERSION};
+use mach_terminal_lib::models::{AppSettings, ShellIntegrationSettings, SETTINGS_SCHEMA_VERSION};
 use mach_terminal_lib::settings::{
     apply_provider_endpoint_patch, load_settings_from_path, save_settings_to_path,
 };
@@ -35,6 +35,42 @@ fn save_and_load_round_trip_settings_file() {
     let loaded = load_settings_from_path(&settings_path).expect("load settings");
     assert_eq!(loaded.schema_version, SETTINGS_SCHEMA_VERSION);
     assert_eq!(loaded.profile.font_size, 16);
+}
+
+#[test]
+fn shell_integration_settings_roundtrip() {
+    let temp = tempdir().expect("tempdir");
+    let settings_path = temp.path().join("settings.json");
+    let mut settings = AppSettings::default();
+    settings.shell_integration = ShellIntegrationSettings {
+        pwsh_profile_override: Some(r"C:\Users\x\Documents\PowerShell\profile.ps1".to_string()),
+        onboarding_install_prompt_seen: true,
+    };
+
+    save_settings_to_path(&settings_path, &settings).expect("save settings");
+    let loaded = load_settings_from_path(&settings_path).expect("load settings");
+    assert_eq!(
+        loaded.shell_integration.pwsh_profile_override,
+        settings.shell_integration.pwsh_profile_override
+    );
+    assert!(loaded.shell_integration.onboarding_install_prompt_seen);
+}
+
+#[test]
+fn shell_integration_onboarding_flag_persists_transitions() {
+    let temp = tempdir().expect("tempdir");
+    let settings_path = temp.path().join("settings.json");
+    let mut settings = AppSettings::default();
+    settings.shell_integration.onboarding_install_prompt_seen = false;
+    save_settings_to_path(&settings_path, &settings).expect("save settings false");
+
+    let mut loaded = load_settings_from_path(&settings_path).expect("load settings false");
+    assert!(!loaded.shell_integration.onboarding_install_prompt_seen);
+
+    loaded.shell_integration.onboarding_install_prompt_seen = true;
+    save_settings_to_path(&settings_path, &loaded).expect("save settings true");
+    let loaded_again = load_settings_from_path(&settings_path).expect("load settings true");
+    assert!(loaded_again.shell_integration.onboarding_install_prompt_seen);
 }
 
 #[test]

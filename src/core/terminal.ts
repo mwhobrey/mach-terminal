@@ -103,10 +103,36 @@ export interface SettingsSchemaDebug {
   migrated_from_legacy: boolean;
 }
 
+/** Optional structured hints assembled client-side; trimmed to strict size limits before invoke. */
+export interface AiPromptContextPayload {
+  cwd?: string | null;
+  shell?: string | null;
+  git_branch?: string | null;
+  /** Primary command the user asked about (explain/fix). */
+  command_text?: string | null;
+  /** Trailing scrollback excerpt for the active session. */
+  output_excerpt?: string | null;
+}
+
+export type AiExecuteIntent = "freeform" | "explain_command" | "fix_command";
+
 export interface AiExecuteRequest {
   session_id: string;
   prompt: string;
   provider_id?: string;
+  intent?: AiExecuteIntent;
+  context?: AiPromptContextPayload;
+}
+
+/** Match backend `MAX_CONTEXT_EXCERPT_CHARS` when slicing session scrollback for `output_excerpt`. */
+export const AI_CONTEXT_OUTPUT_MAX_CHARS = 6000;
+
+/** Keep trailing scrollback so recent errors are preserved when trimming. */
+export function trimAiContextExcerpt(text: string | undefined | null, max = AI_CONTEXT_OUTPUT_MAX_CHARS): string | undefined {
+  if (!text || text.length === 0) {
+    return undefined;
+  }
+  return text.length <= max ? text : text.slice(text.length - max);
 }
 
 export interface AiExecuteResponse {
@@ -265,6 +291,96 @@ export async function shellContextSnapshot(cwd: string | null, includeGitDiff = 
   return invoke<ShellContextSnapshot>("shell_context_snapshot", {
     cwd,
     include_git_diff: includeGitDiff,
+  });
+}
+
+export interface ShellIntegrationMaterializeResult {
+  dir: string;
+  version: number;
+}
+
+export interface ShellIntegrationShellStatus {
+  shellKind: string;
+  profilePath: string | null;
+  profileResolved: boolean;
+  markerPresent: boolean;
+  /** `healthy`, `stale`, `missing`, or `error` */
+  health: string;
+  /** PowerShell sidecar backup count when applicable. */
+  backupCount?: number | null;
+  /** `override`, `auto`, or omitted when pwsh profile could not be resolved */
+  profilePathSource?: string | null;
+  error: string | null;
+}
+
+export interface ShellIntegrationBackupEntry {
+  backupId: string;
+  fileName: string;
+  createdAtMs: number;
+  sizeBytes: number;
+}
+
+export interface ShellIntegrationBackupListResult {
+  shellKind: string;
+  profilePath: string;
+  entries: ShellIntegrationBackupEntry[];
+}
+
+export interface ShellIntegrationBackupRestoreResult {
+  shellKind: string;
+  profilePath: string;
+  restoredBackupId: string;
+}
+
+export interface ShellIntegrationSettings {
+  pwshProfileOverride: string | null;
+  onboardingInstallPromptSeen: boolean;
+}
+
+/** Patch shell integration preferences. Pass `pwshProfileOverride: null` to clear override. */
+export interface ShellIntegrationPatch {
+  pwshProfileOverride?: string | null;
+  onboardingInstallPromptSeen?: boolean;
+}
+
+export interface ShellIntegrationStatus {
+  scriptVersion: number;
+  shellDir: string;
+  shells: ShellIntegrationShellStatus[];
+}
+
+export async function shellIntegrationMaterializeScripts() {
+  return invoke<ShellIntegrationMaterializeResult>("shell_integration_materialize_scripts");
+}
+
+export async function shellIntegrationStatus() {
+  return invoke<ShellIntegrationStatus>("shell_integration_status");
+}
+
+export async function shellIntegrationSettingsGet() {
+  return invoke<ShellIntegrationSettings>("shell_integration_settings_get");
+}
+
+export async function shellIntegrationSettingsPatch(patch: ShellIntegrationPatch) {
+  return invoke<ShellIntegrationSettings>("shell_integration_settings_patch", { patch });
+}
+
+export async function shellIntegrationInstall(shellKind: "pwsh" | "bash" | "zsh") {
+  return invoke<void>("shell_integration_install", { shell_kind: shellKind });
+}
+
+export async function shellIntegrationRemove(shellKind: "pwsh" | "bash" | "zsh") {
+  return invoke<void>("shell_integration_remove", { shell_kind: shellKind });
+}
+
+export async function shellIntegrationBackupsList(shellKind: "pwsh" | "bash" | "zsh") {
+  return invoke<ShellIntegrationBackupListResult>("shell_integration_backups_list", { shell_kind: shellKind });
+}
+
+export async function shellIntegrationBackupRestore(shellKind: "pwsh" | "bash" | "zsh", backupId: string) {
+  return invoke<ShellIntegrationBackupRestoreResult>("shell_integration_backup_restore", {
+    shell_kind: shellKind,
+    backup_id: backupId,
   });
 }
 

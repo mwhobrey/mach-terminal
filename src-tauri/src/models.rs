@@ -78,6 +78,53 @@ impl Default for ProviderRoutingSettings {
     }
 }
 
+/// Persisted preferences for Mach shell integration (OSC 7 hooks); optional fields default safely.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationSettings {
+    /// Non-default PowerShell profile path for hook install/remove (Windows-first).
+    #[serde(default)]
+    pub pwsh_profile_override: Option<String>,
+    /// First-run onboarding: user saw or dismissed the one-click hook install CTA.
+    #[serde(default)]
+    pub onboarding_install_prompt_seen: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationPatch {
+    /// `Some(None)` clears the override; omit field for no change.
+    #[serde(default)]
+    pub pwsh_profile_override: Option<Option<String>>,
+    #[serde(default)]
+    pub onboarding_install_prompt_seen: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationBackupEntry {
+    pub backup_id: String,
+    pub file_name: String,
+    pub created_at_ms: u64,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationBackupListResult {
+    pub shell_kind: String,
+    pub profile_path: String,
+    pub entries: Vec<ShellIntegrationBackupEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationBackupRestoreResult {
+    pub shell_kind: String,
+    pub profile_path: String,
+    pub restored_backup_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default = "default_settings_schema_version")]
@@ -85,6 +132,8 @@ pub struct AppSettings {
     pub profile: TerminalProfile,
     pub providers: Vec<ProviderSettings>,
     pub provider_routing: ProviderRoutingSettings,
+    #[serde(default)]
+    pub shell_integration: ShellIntegrationSettings,
 }
 
 impl Default for AppSettings {
@@ -119,6 +168,7 @@ impl Default for AppSettings {
                 },
             ],
             provider_routing: ProviderRoutingSettings::default(),
+            shell_integration: ShellIntegrationSettings::default(),
         }
     }
 }
@@ -217,11 +267,31 @@ pub struct ProviderDescriptor {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPromptContext {
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub shell: Option<String>,
+    #[serde(default)]
+    pub git_branch: Option<String>,
+    #[serde(default)]
+    pub command_text: Option<String>,
+    #[serde(default)]
+    pub output_excerpt: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiExecuteRequest {
     pub session_id: String,
     pub prompt: String,
     pub provider_id: Option<String>,
+    #[serde(default)]
+    pub intent: Option<String>,
+    #[serde(default)]
+    pub context: Option<AiPromptContext>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

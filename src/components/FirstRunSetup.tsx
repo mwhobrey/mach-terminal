@@ -10,7 +10,17 @@ import {
   providerRoutingPatch,
   providerSettingsGet,
   providerSetEnabled,
+  shellIntegrationInstall,
+  shellIntegrationSettingsGet,
+  shellIntegrationSettingsPatch,
+  shellIntegrationStatus,
 } from "../core/terminal";
+import { isTauri } from "../core/tauriRuntime";
+import {
+  MACH_SNIPPET_OSC7_BASH,
+  MACH_SNIPPET_OSC7_PWSH,
+  MACH_SNIPPET_OSC7_ZSH,
+} from "../core/machShellSnippets";
 
 export const ONBOARDING_STORAGE_KEY = "mach-terminal.onboarding.v1";
 
@@ -30,6 +40,15 @@ type Props = {
   onSaved: () => void | Promise<void>;
 };
 
+export function shouldShowOnboardingPwshCta(args: {
+  tauri: boolean;
+  promptSeen: boolean;
+  alreadyInstalled: boolean;
+  hardStatusError: boolean;
+}): boolean {
+  return args.tauri && !args.promptSeen && !args.alreadyInstalled && !args.hardStatusError;
+}
+
 export function FirstRunSetup({ open, onClose, onSaved }: Props) {
   const [profile, setProfile] = useState<TerminalProfile>({ env: {}, font_size: 13 });
   const [providers, setProviders] = useState<ProviderSettings[]>([]);
@@ -41,6 +60,13 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pwshHookBusy, setPwshHookBusy] = useState(false);
+  const [pwshHookOk, setPwshHookOk] = useState(false);
+  const [pwshHookErr, setPwshHookErr] = useState<string | null>(null);
+  const [pwshPromptDismissBusy, setPwshPromptDismissBusy] = useState(false);
+  const [pwshOnboardingPromptSeen, setPwshOnboardingPromptSeen] = useState(false);
+  const [pwshHookAlreadyInstalled, setPwshHookAlreadyInstalled] = useState(false);
+  const [pwshHardStatusError, setPwshHardStatusError] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -50,10 +76,32 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     void (async () => {
       try {
         const [p, pv, r] = await Promise.all([profileGet(), providerSettingsGet(), providerRoutingGet()]);
+        let nextPromptSeen = false;
+        let nextHookInstalled = false;
+        let nextHardStatusError = false;
+        if (isTauri()) {
+          const [settingsRes, statusRes] = await Promise.allSettled([
+            shellIntegrationSettingsGet(),
+            shellIntegrationStatus(),
+          ]);
+          if (settingsRes.status === "fulfilled") {
+            nextPromptSeen = settingsRes.value.onboardingInstallPromptSeen;
+          }
+          if (statusRes.status === "fulfilled") {
+            const pwshRow = statusRes.value.shells.find((row) => row.shellKind === "pwsh");
+            if (pwshRow) {
+              nextHookInstalled = pwshRow.markerPresent;
+              nextHardStatusError = Boolean(pwshRow.error && !pwshRow.profileResolved);
+            }
+          }
+        }
         if (!cancelled) {
           setProfile(p);
           setProviders(pv);
           setRouting(r);
+          setPwshOnboardingPromptSeen(nextPromptSeen);
+          setPwshHookAlreadyInstalled(nextHookInstalled);
+          setPwshHardStatusError(nextHardStatusError);
           setError(null);
         }
       } catch (e) {
@@ -141,12 +189,54 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     onClose();
   }, [onClose]);
 
+  const installPwshHookFromOnboarding = useCallback(async () => {
+    if (!isTauri()) {
+      return;
+    }
+    setPwshHookBusy(true);
+    setPwshHookErr(null);
+    setPwshHookOk(false);
+    try {
+      await shellIntegrationInstall("pwsh");
+      await shellIntegrationSettingsPatch({ onboardingInstallPromptSeen: true });
+      setPwshHookOk(true);
+      setPwshOnboardingPromptSeen(true);
+      setPwshHookAlreadyInstalled(true);
+    } catch (e) {
+      setPwshHookErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPwshHookBusy(false);
+    }
+  }, []);
+
+  const dismissPwshInstallPrompt = useCallback(async () => {
+    if (!isTauri()) {
+      return;
+    }
+    setPwshPromptDismissBusy(true);
+    setPwshHookErr(null);
+    try {
+      await shellIntegrationSettingsPatch({ onboardingInstallPromptSeen: true });
+      setPwshOnboardingPromptSeen(true);
+    } catch (e) {
+      setPwshHookErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPwshPromptDismissBusy(false);
+    }
+  }, []);
+
   if (!open) {
     return null;
   }
 
   const onboardingState = typeof window !== "undefined" ? window.localStorage.getItem(ONBOARDING_STORAGE_KEY) : "done";
   const showSkip = onboardingState !== "done" && onboardingState !== "skipped";
+  const showPwshInstallPrompt = shouldShowOnboardingPwshCta({
+    tauri: isTauri(),
+    promptSeen: pwshOnboardingPromptSeen,
+    alreadyInstalled: pwshHookAlreadyInstalled,
+    hardStatusError: pwshHardStatusError,
+  });
 
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !loading && !showSkip && onClose()}>
@@ -196,6 +286,78 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
               }
             />
           </label>
+          <div className="minimal-prompt-snippet-block mach-osc7-block">
+            <p className="muted-block">
+              <strong>Shell integration (OSC 7).</strong> Mach reads cwd from your shell so the status strip (path, git,
+              restart) matches where you are. Prefer <strong>Settings → Shell integration</strong> to install a hook
+              automatically; or paste the block for your shell into your profile — the PowerShell version uses{" "}
+              <code>LocationChangedAction</code> so it works with Oh My Posh without replacing your prompt. Oh My Posh
+              icons use Nerd Font codepoints; Mach bundles a symbol font so those glyphs render without a separate OS
+              install.
+            </p>
+            {showPwshInstallPrompt ? (
+              <div className="shell-hook-cta">
+                <div className="inline-controls">
+                  <button
+                    type="button"
+                    className="inline-btn"
+                    disabled={loading || pwshHookBusy || pwshPromptDismissBusy}
+                    onClick={() => void installPwshHookFromOnboarding()}
+                  >
+                    {pwshHookBusy ? "Installing…" : "Install PowerShell hook now"}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-btn ghost"
+                    disabled={loading || pwshHookBusy || pwshPromptDismissBusy}
+                    onClick={() => void dismissPwshInstallPrompt()}
+                  >
+                    {pwshPromptDismissBusy ? "Saving…" : "Not now"}
+                  </button>
+                </div>
+                {pwshHookOk ? (
+                  <p className="muted-block">
+                    Hook installed into your profile. Open a new session (or restart the shell) for OSC 7 cwd updates.
+                  </p>
+                ) : null}
+                {pwshHookErr ? <p className="error-text">{pwshHookErr}</p> : null}
+              </div>
+            ) : null}
+            <div className="minimal-prompt-snippet-row">
+              <span className="minimal-prompt-snippet-label">PowerShell</span>
+              <button
+                type="button"
+                className="inline-btn ghost"
+                onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC7_PWSH)}
+              >
+                Copy OSC 7
+              </button>
+            </div>
+            <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC7_PWSH}</pre>
+            <div className="minimal-prompt-snippet-row">
+              <span className="minimal-prompt-snippet-label">Bash</span>
+              <button
+                type="button"
+                className="inline-btn ghost"
+                onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC7_BASH)}
+              >
+                Copy OSC 7
+              </button>
+            </div>
+            <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC7_BASH}</pre>
+            <div className="minimal-prompt-snippet-row">
+              <span className="minimal-prompt-snippet-label">zsh</span>
+              <button
+                type="button"
+                className="inline-btn ghost"
+                onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC7_ZSH)}
+              >
+                Copy OSC 7
+              </button>
+            </div>
+            <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC7_ZSH}</pre>
+          </div>
+
           <label className="toggle-row">
             <input
               type="checkbox"

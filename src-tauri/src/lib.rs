@@ -2,6 +2,7 @@ pub mod models;
 pub mod history_store;
 pub mod input_sanitize;
 pub mod osc7;
+pub mod shell_integration;
 pub mod shell_context;
 mod plugin_host;
 pub mod provider_host;
@@ -14,8 +15,8 @@ mod telemetry;
 use crate::models::{
     AiExecuteRequest, AiExecuteResponse, HistoryEntry, HistoryQueryRequest, ProfilePatch, ProviderDescriptor,
     ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings, PtySessionInfo, PtySpawnRequest,
-    RuntimeCapabilitiesSnapshot, RuntimeDebugSnapshot, SettingsSchemaDebug, RuntimeMetricsSnapshot, TerminalProfile,
-    WorkspaceLayout,
+    RuntimeCapabilitiesSnapshot, RuntimeDebugSnapshot, RuntimeMetricsSnapshot, SettingsSchemaDebug,
+    ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, WorkspaceLayout,
 };
 use crate::plugin_host::{PluginExecutionResult, PluginHost};
 use crate::session_manager::SessionManager;
@@ -49,6 +50,21 @@ fn profile_set(app: AppHandle, profile: TerminalProfile) -> Result<TerminalProfi
 #[instrument(skip(app, patch))]
 fn profile_patch(app: AppHandle, patch: ProfilePatch) -> Result<TerminalProfile, String> {
     settings::patch_profile(&app, patch)
+}
+
+#[tauri::command]
+#[instrument(skip(app))]
+fn shell_integration_settings_get(app: AppHandle) -> Result<ShellIntegrationSettings, String> {
+    settings::get_shell_integration_settings(&app)
+}
+
+#[tauri::command]
+#[instrument(skip(app, patch))]
+fn shell_integration_settings_patch(
+    app: AppHandle,
+    patch: ShellIntegrationPatch,
+) -> Result<ShellIntegrationSettings, String> {
+    settings::patch_shell_integration_settings(&app, patch)
 }
 
 #[tauri::command]
@@ -333,7 +349,15 @@ pub fn run() {
             plugin_grant_capability,
             plugin_execute,
             ai_execute,
-            shell_context::shell_context_snapshot
+            shell_context::shell_context_snapshot,
+            shell_integration_settings_get,
+            shell_integration_settings_patch,
+            shell_integration::shell_integration_materialize_scripts,
+            shell_integration::shell_integration_status,
+            shell_integration::shell_integration_install,
+            shell_integration::shell_integration_remove,
+            shell_integration::shell_integration_backups_list,
+            shell_integration::shell_integration_backup_restore,
         ])
         .build(tauri::generate_context!());
 
