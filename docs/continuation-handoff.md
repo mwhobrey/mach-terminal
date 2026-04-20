@@ -117,6 +117,24 @@ Primary files:
 - `src/App.tsx`
 - `docs/runtime-contracts.md`
 
+### Shell Integration P5 (strategy-map dispatch + matrix guards)
+
+- Refactored shell integration mutation/recovery operations to use canonical shell strategy dispatch.
+- Added canonical shell kind normalization (`powershell` -> `pwsh`) with consistent unknown-shell error handling.
+- Removed repeated operation-level shell-kind branching in:
+  - install
+  - remove
+  - backups list
+  - backup restore
+- Added backend matrix-style tests for shell kind normalization/strategy parity and frontend helper regression tests.
+
+Primary files:
+
+- `src-tauri/src/shell_integration.rs`
+- `src/components/ShellIntegrationSection.tsx`
+- `src/components/ShellIntegrationSection.test.ts`
+- `docs/runtime-contracts.md`
+
 ## Important Contracts
 
 ### Shell integration status contract
@@ -155,18 +173,7 @@ Do not set this flag from general onboarding Save/Quick start/Skip flows.
 
 ## Open Backlog (Recommended Priority)
 
-### 1) Shell Integration P5 (optional follow-up)
-
-Goal: reduce maintenance overhead by extracting common shell integration logic
-into explicit shell strategy helpers and add table-driven matrix tests.
-
-Potential tasks:
-
-- move shell target/expected line resolution to strategy map
-- reduce repeated status/install/remove conditionals
-- add matrix tests over shell-kind x operation x profile state
-
-### 2) Scripted UX smoke coverage
+### 1) Scripted UX smoke coverage
 
 Goal: convert more UX dogfood checklist coverage into scripted smoke checks.
 
@@ -175,6 +182,16 @@ Anchor files:
 - `scripts/*`
 - `docs/ux-dogfood-log-template.md`
 - relevant UX test targets under `src/*`
+
+### 2) Shell Integration P5 follow-up (status-path consolidation)
+
+Goal: continue P5 by reducing duplication inside `shell_integration_status` builders (`pwsh_shell_status` / `unix_profile_shell_status`) without changing payload contracts.
+
+Potential tasks:
+
+- unify marker/expected-line health derivation into a shared status builder helper
+- keep profile-source semantics (`override` / `auto`) unchanged
+- add parity tests for status rows across `pwsh`, `bash`, `zsh`
 
 ## Next Session Startup Checklist
 

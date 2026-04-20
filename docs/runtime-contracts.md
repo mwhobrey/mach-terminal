@@ -32,6 +32,12 @@ This document defines the first stable contract between the frontend shell and R
 - `runtime_metrics_snapshot() -> RuntimeMetricsSnapshot`
 - `workspace_layout_get() -> WorkspaceLayout | null` — reads `workspace_layout.json` next to `settings.json`; returns `null` if missing; invalid JSON is backed up as `workspace_layout.corrupt-*.json` and yields `null` so startup can continue
 - `workspace_layout_set(layout: WorkspaceLayout) -> void` — full replace, atomic write, normalizes `schemaVersion` to the current supported version on save
+- `shell_integration_materialize_scripts() -> ShellIntegrationMaterializeResult`
+- `shell_integration_status() -> ShellIntegrationStatus`
+- `shell_integration_install(shell_kind: "pwsh" | "powershell" | "bash" | "zsh") -> void`
+- `shell_integration_remove(shell_kind: "pwsh" | "powershell" | "bash" | "zsh") -> void`
+- `shell_integration_backups_list(shell_kind: "pwsh" | "powershell" | "bash" | "zsh") -> ShellIntegrationBackupListResult`
+- `shell_integration_backup_restore(shell_kind: "pwsh" | "powershell" | "bash" | "zsh", backup_id: string) -> ShellIntegrationBackupRestoreResult`
 - `plugin_grant_capability(request: PluginGrantRequest) -> PluginPolicyDecision`
 - `plugin_execute(request: PluginExecuteRequest) -> PluginExecutionResult`
 - `plugin_metrics_snapshot() -> PluginMetricsSnapshot`
@@ -164,6 +170,18 @@ This document defines the first stable contract between the frontend shell and R
   - `cumulativeExecutionMs`
   - `lastExecutionMs`
   - `grantedPluginCount`
+
+## Shell Integration Rules
+
+- Shell integration operation dispatch is normalized through a canonical shell strategy:
+  - `powershell` aliases to `pwsh`.
+  - Supported canonical shells are `pwsh`, `bash`, and `zsh`.
+- Unknown shell kinds return a consistent `"unknown shell_kind"` error across:
+  - install
+  - remove
+  - backups list
+  - backup restore
+- The P5 dispatch refactor does not change shell integration payload shapes; it reduces repeated backend branching only.
 
 ## Cross-Platform PTY Behavior
 

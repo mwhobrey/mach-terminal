@@ -29,6 +29,69 @@ const EMBED_PS1: &str = include_str!("../resources/shell/mach-init.ps1");
 const EMBED_BASH: &str = include_str!("../resources/shell/mach-init.bash");
 const EMBED_ZSH: &str = include_str!("../resources/shell/mach-init.zsh");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CanonicalShellKind {
+    Pwsh,
+    Bash,
+    Zsh,
+}
+
+impl CanonicalShellKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            CanonicalShellKind::Pwsh => "pwsh",
+            CanonicalShellKind::Bash => "bash",
+            CanonicalShellKind::Zsh => "zsh",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ShellStrategy {
+    kind: CanonicalShellKind,
+    init_script_name: &'static str,
+    supports_backup_restore: bool,
+    supports_profile_override: bool,
+}
+
+const PWSH_STRATEGY: ShellStrategy = ShellStrategy {
+    kind: CanonicalShellKind::Pwsh,
+    init_script_name: "mach-init.ps1",
+    supports_backup_restore: true,
+    supports_profile_override: true,
+};
+
+const BASH_STRATEGY: ShellStrategy = ShellStrategy {
+    kind: CanonicalShellKind::Bash,
+    init_script_name: "mach-init.bash",
+    supports_backup_restore: true,
+    supports_profile_override: false,
+};
+
+const ZSH_STRATEGY: ShellStrategy = ShellStrategy {
+    kind: CanonicalShellKind::Zsh,
+    init_script_name: "mach-init.zsh",
+    supports_backup_restore: true,
+    supports_profile_override: false,
+};
+
+fn normalize_shell_kind(shell_kind: &str) -> Result<CanonicalShellKind, String> {
+    match shell_kind.trim() {
+        "pwsh" | "powershell" => Ok(CanonicalShellKind::Pwsh),
+        "bash" => Ok(CanonicalShellKind::Bash),
+        "zsh" => Ok(CanonicalShellKind::Zsh),
+        _ => Err(format!("unknown shell_kind: {shell_kind}")),
+    }
+}
+
+fn shell_strategy(shell_kind: &str) -> Result<ShellStrategy, String> {
+    match normalize_shell_kind(shell_kind)? {
+        CanonicalShellKind::Pwsh => Ok(PWSH_STRATEGY),
+        CanonicalShellKind::Bash => Ok(BASH_STRATEGY),
+        CanonicalShellKind::Zsh => Ok(ZSH_STRATEGY),
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellIntegrationMaterializeResult {
@@ -235,10 +298,10 @@ fn resolve_zsh_profile() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".zshrc"))
 }
 
-fn resolve_unix_shell_profile(shell_kind: &str) -> Option<PathBuf> {
+fn resolve_unix_shell_profile(shell_kind: CanonicalShellKind) -> Option<PathBuf> {
     match shell_kind {
-        "bash" => resolve_bash_profile(),
-        "zsh" => resolve_zsh_profile(),
+        CanonicalShellKind::Bash => resolve_bash_profile(),
+        CanonicalShellKind::Zsh => resolve_zsh_profile(),
         _ => None,
     }
 }
@@ -282,28 +345,36 @@ fn resolve_pwsh_hook_target(app: &AppHandle, shell_hint: Option<&str>) -> Result
 
 fn resolve_shell_hook_target(
     app: &AppHandle,
-    shell_kind: &str,
+    strategy: ShellStrategy,
     shell_hint: Option<&str>,
 ) -> Result<(PathBuf, Option<&'static str>), String> {
-    match shell_kind {
-        "pwsh" | "powershell" => {
+    match strategy.kind {
+        CanonicalShellKind::Pwsh => {
             let (path, source) = resolve_pwsh_hook_target(app, shell_hint)?;
             Ok((path, Some(source)))
         }
-        "bash" | "zsh" => {
-            let path = resolve_unix_shell_profile(shell_kind)
+        CanonicalShellKind::Bash | CanonicalShellKind::Zsh => {
+            let path = resolve_unix_shell_profile(strategy.kind)
                 .ok_or_else(|| "could not resolve home directory".to_string())?;
             Ok((path, Some("auto")))
         }
-        _ => Err(format!("unknown shell_kind: {shell_kind}")),
+    }
+}
+
+fn shell_capabilities_for_strategy(strategy: ShellStrategy) -> ShellIntegrationShellCapabilities {
+    ShellIntegrationShellCapabilities {
+        supports_backup_restore: strategy.supports_backup_restore,
+        supports_profile_override: strategy.supports_profile_override,
     }
 }
 
 fn shell_capabilities(shell_kind: &str) -> ShellIntegrationShellCapabilities {
-    ShellIntegrationShellCapabilities {
-        supports_backup_restore: matches!(shell_kind, "pwsh" | "powershell" | "bash" | "zsh"),
-        supports_profile_override: matches!(shell_kind, "pwsh" | "powershell"),
-    }
+    shell_strategy(shell_kind)
+        .map(shell_capabilities_for_strategy)
+        .unwrap_or(ShellIntegrationShellCapabilities {
+            supports_backup_restore: false,
+            supports_profile_override: false,
+        })
 }
 
 fn classify_shell_health(error: Option<&str>, marker: bool, expected_matches: Option<bool>) -> &'static str {
@@ -619,17 +690,14 @@ pub fn shell_integration_status(app: AppHandle) -> Result<ShellIntegrationStatus
 #[tracing::instrument(skip(app))]
 pub fn shell_integration_backups_list(app: AppHandle, shell_kind: String) -> Result<ShellIntegrationBackupListResult, String> {
     let profile = settings::get_profile(&app).unwrap_or_else(|_| TerminalProfile::default());
-    let normalized_kind = match shell_kind.as_str() {
-        "powershell" => "pwsh",
-        other => other,
-    };
-    let (profile_path, _) = resolve_shell_hook_target(&app, normalized_kind, profile.shell.as_deref())?;
+    let strategy = shell_strategy(&shell_kind)?;
+    let (profile_path, _) = resolve_shell_hook_target(&app, strategy, profile.shell.as_deref())?;
     let entries = list_backup_candidates(&profile_path)?
         .into_iter()
         .map(|candidate| candidate.entry)
         .collect();
     Ok(ShellIntegrationBackupListResult {
-        shell_kind: normalized_kind.to_string(),
+        shell_kind: strategy.kind.as_str().to_string(),
         profile_path: profile_path.to_string_lossy().to_string(),
         entries,
     })
@@ -658,11 +726,8 @@ pub fn shell_integration_backup_restore(
     backup_id: String,
 ) -> Result<ShellIntegrationBackupRestoreResult, String> {
     let profile = settings::get_profile(&app).unwrap_or_else(|_| TerminalProfile::default());
-    let normalized_kind = match shell_kind.as_str() {
-        "powershell" => "pwsh",
-        other => other,
-    };
-    let (profile_path, _) = resolve_shell_hook_target(&app, normalized_kind, profile.shell.as_deref())?;
+    let strategy = shell_strategy(&shell_kind)?;
+    let (profile_path, _) = resolve_shell_hook_target(&app, strategy, profile.shell.as_deref())?;
     let candidates = list_backup_candidates(&profile_path)?;
     let selected = candidates
         .into_iter()
@@ -670,7 +735,7 @@ pub fn shell_integration_backup_restore(
         .ok_or_else(|| "backup id not found for current profile target".to_string())?;
     restore_profile_from_backup(&profile_path, &selected.path)?;
     Ok(ShellIntegrationBackupRestoreResult {
-        shell_kind: normalized_kind.to_string(),
+        shell_kind: strategy.kind.as_str().to_string(),
         profile_path: profile_path.to_string_lossy().to_string(),
         restored_backup_id: selected.entry.backup_id,
     })
@@ -733,59 +798,27 @@ fn remove_from_profile(profile_path: &Path) -> Result<(), String> {
 pub fn shell_integration_install(app: AppHandle, shell_kind: String) -> Result<(), String> {
     let dir = materialize_scripts_inner(&app)?;
     let profile = settings::get_profile(&app).unwrap_or_else(|_| TerminalProfile::default());
-
-    match shell_kind.as_str() {
-        "pwsh" | "powershell" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "pwsh", profile.shell.as_deref())?;
-            let init = dir.join("mach-init.ps1");
-            if !init.exists() {
-                return Err("mach-init.ps1 was not materialized".to_string());
-            }
-            let line = powershell_dot_source_line(&init)?;
-            install_into_profile(&profile_path, &line)
-        }
-        "bash" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "bash", profile.shell.as_deref())?;
-            let init = dir.join("mach-init.bash");
-            if !init.exists() {
-                return Err("mach-init.bash was not materialized".to_string());
-            }
-            let line = bash_source_line(&init);
-            install_into_profile(&profile_path, &line)
-        }
-        "zsh" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "zsh", profile.shell.as_deref())?;
-            let init = dir.join("mach-init.zsh");
-            if !init.exists() {
-                return Err("mach-init.zsh was not materialized".to_string());
-            }
-            let line = zsh_source_line(&init);
-            install_into_profile(&profile_path, &line)
-        }
-        _ => Err(format!("unknown shell_kind: {shell_kind}")),
+    let strategy = shell_strategy(&shell_kind)?;
+    let (profile_path, _) = resolve_shell_hook_target(&app, strategy, profile.shell.as_deref())?;
+    let init = dir.join(strategy.init_script_name);
+    if !init.exists() {
+        return Err(format!("{} was not materialized", strategy.init_script_name));
     }
+    let line = match strategy.kind {
+        CanonicalShellKind::Pwsh => powershell_dot_source_line(&init)?,
+        CanonicalShellKind::Bash => bash_source_line(&init),
+        CanonicalShellKind::Zsh => zsh_source_line(&init),
+    };
+    install_into_profile(&profile_path, &line)
 }
 
 #[tauri::command]
 #[tracing::instrument(skip(app))]
 pub fn shell_integration_remove(app: AppHandle, shell_kind: String) -> Result<(), String> {
     let profile = settings::get_profile(&app).unwrap_or_else(|_| TerminalProfile::default());
-
-    match shell_kind.as_str() {
-        "pwsh" | "powershell" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "pwsh", profile.shell.as_deref())?;
-            remove_from_profile(&profile_path)
-        }
-        "bash" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "bash", profile.shell.as_deref())?;
-            remove_from_profile(&profile_path)
-        }
-        "zsh" => {
-            let (profile_path, _) = resolve_shell_hook_target(&app, "zsh", profile.shell.as_deref())?;
-            remove_from_profile(&profile_path)
-        }
-        _ => Err(format!("unknown shell_kind: {shell_kind}")),
-    }
+    let strategy = shell_strategy(&shell_kind)?;
+    let (profile_path, _) = resolve_shell_hook_target(&app, strategy, profile.shell.as_deref())?;
+    remove_from_profile(&profile_path)
 }
 
 #[cfg(test)]
@@ -917,5 +950,46 @@ mod tests {
         assert!(pwsh.supports_profile_override);
         assert!(bash.supports_backup_restore);
         assert!(!bash.supports_profile_override);
+    }
+
+    #[test]
+    fn normalize_shell_kind_maps_aliases_and_rejects_unknown() {
+        assert_eq!(normalize_shell_kind("pwsh").expect("pwsh"), CanonicalShellKind::Pwsh);
+        assert_eq!(
+            normalize_shell_kind("powershell").expect("powershell"),
+            CanonicalShellKind::Pwsh
+        );
+        assert_eq!(normalize_shell_kind("bash").expect("bash"), CanonicalShellKind::Bash);
+        assert_eq!(normalize_shell_kind("zsh").expect("zsh"), CanonicalShellKind::Zsh);
+        assert!(normalize_shell_kind("fish").is_err());
+    }
+
+    #[test]
+    fn shell_strategy_is_complete_for_supported_shells() {
+        let pwsh = shell_strategy("pwsh").expect("pwsh strategy");
+        let bash = shell_strategy("bash").expect("bash strategy");
+        let zsh = shell_strategy("zsh").expect("zsh strategy");
+
+        assert_eq!(pwsh.init_script_name, "mach-init.ps1");
+        assert!(pwsh.supports_backup_restore);
+        assert!(pwsh.supports_profile_override);
+
+        assert_eq!(bash.init_script_name, "mach-init.bash");
+        assert!(bash.supports_backup_restore);
+        assert!(!bash.supports_profile_override);
+
+        assert_eq!(zsh.init_script_name, "mach-init.zsh");
+        assert!(zsh.supports_backup_restore);
+        assert!(!zsh.supports_profile_override);
+    }
+
+    #[test]
+    fn powershell_alias_strategy_matches_pwsh() {
+        let pwsh = shell_strategy("pwsh").expect("pwsh");
+        let alias = shell_strategy("powershell").expect("powershell alias");
+        assert_eq!(pwsh.kind, alias.kind);
+        assert_eq!(pwsh.init_script_name, alias.init_script_name);
+        assert_eq!(pwsh.supports_backup_restore, alias.supports_backup_restore);
+        assert_eq!(pwsh.supports_profile_override, alias.supports_profile_override);
     }
 }

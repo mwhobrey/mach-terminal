@@ -38,7 +38,7 @@ function sourceBadgeLabel(source: string | null | undefined): string | null {
   return `profile: ${source}`;
 }
 
-function healthBadgeLabel(health: string): string {
+export function healthBadgeLabel(health: string): string {
   if (health === "healthy") return "health: healthy";
   if (health === "stale") return "health: stale";
   if (health === "missing") return "health: missing";
@@ -46,7 +46,7 @@ function healthBadgeLabel(health: string): string {
   return `health: ${health}`;
 }
 
-function shellTargetFromKind(kind: string): ShellTarget | null {
+export function shellTargetFromKind(kind: string): ShellTarget | null {
   if (kind === "pwsh" || kind === "bash" || kind === "zsh") return kind;
   return null;
 }
