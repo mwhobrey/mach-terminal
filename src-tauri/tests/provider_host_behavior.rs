@@ -58,7 +58,7 @@ async fn rejects_when_default_provider_is_not_configured() {
 }
 
 #[tokio::test]
-async fn rejects_configured_provider_without_adapter() {
+async fn rejects_configured_provider_without_credentials() {
     let client = default_runtime_client().expect("runtime client");
     let mut settings = AppSettings::default();
     settings.provider_routing.ai_feature_enabled = true;
@@ -70,8 +70,8 @@ async fn rejects_configured_provider_without_adapter() {
     }
     let error = execute_ai_request(&client, &settings, &request())
         .await
-        .expect_err("unimplemented adapter should reject");
-    assert!(error.contains("no execution adapter"));
+        .expect_err("missing credentials should reject");
+    assert!(error.contains("missing credentials"));
 }
 
 #[tokio::test]

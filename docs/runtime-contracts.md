@@ -12,6 +12,9 @@ This document defines the first stable contract between the frontend shell and R
 - `provider_settings_set(providers: ProviderSettings[]) -> ProviderSettings[]`
 - `provider_set_enabled(provider_id: string, enabled: bool) -> ProviderSettings[]`
 - `provider_endpoint_set(provider_id: string, endpoint: string | null) -> ProviderSettings[]`
+- `provider_api_key_set(provider_id: string, api_key: string) -> void`
+- `provider_api_key_clear(provider_id: string) -> void`
+- `provider_api_key_status(provider_id: string) -> ProviderApiKeyStatus` (`{ provider_id, hasStoredKey }`)
 - `provider_list() -> ProviderDescriptor[]`
 - `provider_routing_get() -> ProviderRoutingSettings`
 - `provider_routing_set(provider_routing: ProviderRoutingSettings) -> ProviderRoutingSettings`
@@ -111,15 +114,26 @@ This document defines the first stable contract between the frontend shell and R
 - Routing writes are validated:
   - `default_provider` must reference a configured provider id
   - `ollama_model` cannot be blank after trimming
+  - `openai_model` cannot be blank after trimming
+  - `anthropic_model` cannot be blank after trimming
+  - `custom_openai_model` cannot be blank after trimming
 - Provider endpoint writes are sanity-checked:
   - endpoint is optional (`null`/empty clears)
   - when provided, endpoint must be an absolute `http` or `https` URL
-- Initial execution adapter:
+- API key resolution order for cloud/custom providers:
+  - secure keychain value via `provider_api_key_set`
+  - provider-specific env fallback (`api_key_env`)
+  - explicit auth-missing error if neither exists
+- Execution adapters:
   - `ollama` via `POST /api/generate` with `stream=false`
+  - `openai` + `custom-openai` via OpenAI-compatible `POST /v1/chat/completions`
+  - `anthropic` via `POST /v1/messages`
 - Standardized AI failure buckets surfaced by backend messages:
   - routing disabled
   - provider not configured
   - provider disabled
+  - provider credentials missing
+  - secure key storage unavailable
   - invalid endpoint
   - endpoint unreachable
   - upstream error response

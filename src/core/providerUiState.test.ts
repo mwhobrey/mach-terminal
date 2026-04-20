@@ -21,9 +21,9 @@ describe("provider ui state helpers", () => {
 
   it("marks only runtime-supported providers as executable", () => {
     expect(isExecutableProvider("ollama")).toBe(true);
-    expect(isExecutableProvider("openai")).toBe(false);
-    expect(isExecutableProvider("anthropic")).toBe(false);
-    expect(isExecutableProvider("custom-openai")).toBe(false);
+    expect(isExecutableProvider("openai")).toBe(true);
+    expect(isExecutableProvider("anthropic")).toBe(true);
+    expect(isExecutableProvider("custom-openai")).toBe(true);
   });
 
   it("classifies backend AI errors into stable frontend categories", () => {
@@ -31,6 +31,13 @@ describe("provider ui state helpers", () => {
       .toBe("routing_disabled");
     expect(classifyAiError("Provider `ollama` is disabled. Enable it in settings before sending AI requests."))
       .toBe("provider_disabled");
+    expect(
+      classifyAiError(
+        "Provider `openai` is missing credentials. Set an API key in settings or configure its environment variable.",
+      ),
+    ).toBe("auth_missing");
+    expect(classifyAiError("Secure provider key storage is unavailable. service unavailable"))
+      .toBe("secret_unavailable");
     expect(classifyAiError("Provider endpoint is unreachable. connection refused"))
       .toBe("endpoint_unreachable");
     expect(classifyAiError("Provider endpoint is invalid. missing host"))
@@ -43,6 +50,7 @@ describe("provider ui state helpers", () => {
 
   it("maps backend errors to user-facing status text", () => {
     expect(aiErrorStatusMessage("Provider endpoint is unreachable. timeout")).toBe("Provider endpoint is unreachable.");
+    expect(aiErrorStatusMessage("Provider `openai` is missing credentials.")).toBe("Provider credentials are missing.");
     expect(aiErrorStatusMessage("something totally unexpected")).toBe("AI request failed.");
   });
 });

@@ -6,6 +6,9 @@ describe("onboarding quick-start helpers", () => {
     expect(QUICKSTART_ROUTING).toEqual({
       default_provider: "ollama",
       ollama_model: "llama3.2",
+      openai_model: "gpt-4o-mini",
+      anthropic_model: "claude-3-5-haiku-latest",
+      custom_openai_model: "gpt-4o-mini",
       ai_feature_enabled: false,
     });
   });

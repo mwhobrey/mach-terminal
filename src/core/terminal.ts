@@ -86,13 +86,24 @@ export interface AiContextEvent {
 export interface ProviderRoutingSettings {
   default_provider: string;
   ollama_model: string;
+  openai_model: string;
+  anthropic_model: string;
+  custom_openai_model: string;
   ai_feature_enabled: boolean;
 }
 
 export interface ProviderRoutingPatch {
   default_provider?: string;
   ollama_model?: string;
+  openai_model?: string;
+  anthropic_model?: string;
+  custom_openai_model?: string;
   ai_feature_enabled?: boolean;
+}
+
+export interface ProviderApiKeyStatus {
+  provider_id: string;
+  hasStoredKey: boolean;
 }
 
 export interface SettingsSchemaDebug {
@@ -226,6 +237,18 @@ export async function providerSetEnabled(providerId: string, enabled: boolean) {
 
 export async function providerEndpointSet(providerId: string, endpoint?: string | null) {
   return invoke<ProviderSettings[]>("provider_endpoint_set", { providerId, endpoint: endpoint ?? null });
+}
+
+export async function providerApiKeySet(providerId: string, apiKey: string) {
+  return invoke("provider_api_key_set", { providerId, apiKey });
+}
+
+export async function providerApiKeyClear(providerId: string) {
+  return invoke("provider_api_key_clear", { providerId });
+}
+
+export async function providerApiKeyStatus(providerId: string) {
+  return invoke<ProviderApiKeyStatus>("provider_api_key_status", { providerId });
 }
 
 export async function providerRoutingGet() {

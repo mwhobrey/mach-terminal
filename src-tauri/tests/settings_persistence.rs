@@ -115,6 +115,9 @@ fn legacy_settings_without_schema_version_are_migrated() {
     let migrated = load_settings_from_path(&settings_path).expect("load migrated settings");
     assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
     assert_eq!(migrated.profile.font_size, 15);
+    assert_eq!(migrated.provider_routing.openai_model, "gpt-4o-mini");
+    assert_eq!(migrated.provider_routing.anthropic_model, "claude-3-5-haiku-latest");
+    assert_eq!(migrated.provider_routing.custom_openai_model, "gpt-4o-mini");
 
     let rewritten_raw = fs::read_to_string(&settings_path).expect("read rewritten settings");
     let rewritten_json: serde_json::Value = serde_json::from_str(&rewritten_raw).expect("valid rewritten json");

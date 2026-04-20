@@ -1,13 +1,15 @@
 export type AiErrorCategory =
   | "routing_disabled"
   | "provider_disabled"
+  | "auth_missing"
+  | "secret_unavailable"
   | "endpoint_unreachable"
   | "invalid_endpoint"
   | "upstream_error"
   | "decode_error"
   | "generic";
 
-const EXECUTABLE_PROVIDER_IDS = new Set(["ollama"]);
+const EXECUTABLE_PROVIDER_IDS = new Set(["openai", "anthropic", "ollama", "custom-openai"]);
 
 export function canRunAiRequest(aiOptInEnabled: boolean, requestInFlight: boolean): boolean {
   return aiOptInEnabled && !requestInFlight;
@@ -28,6 +30,12 @@ export function classifyAiError(message: string): AiErrorCategory {
   }
   if (lowered.includes("is disabled")) {
     return "provider_disabled";
+  }
+  if (lowered.includes("is missing credentials")) {
+    return "auth_missing";
+  }
+  if (lowered.includes("secure provider key storage is unavailable")) {
+    return "secret_unavailable";
   }
   if (lowered.includes("unreachable")) {
     return "endpoint_unreachable";
@@ -51,6 +59,10 @@ export function aiErrorStatusMessage(message: string): string {
       return "AI is disabled in routing settings.";
     case "provider_disabled":
       return "Selected provider is disabled.";
+    case "auth_missing":
+      return "Provider credentials are missing.";
+    case "secret_unavailable":
+      return "Secure key storage is unavailable.";
     case "endpoint_unreachable":
       return "Provider endpoint is unreachable.";
     case "invalid_endpoint":

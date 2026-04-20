@@ -294,6 +294,7 @@ function App() {
     routing,
     routingDraft,
     providerEndpointDrafts,
+    providerApiKeyDrafts,
     providerConfigStatus,
     aiPrompt,
     aiResponse,
@@ -303,10 +304,13 @@ function App() {
     initializeProviderAiState,
     setRoutingDraft,
     updateProviderEndpointDraft,
+    updateProviderApiKeyDraft,
     setAiPrompt,
     setLastAiContext,
     toggleProvider,
     saveProviderEndpoint,
+    saveProviderApiKey,
+    clearProviderApiKey,
     saveRoutingConfig,
     setAiOptIn,
     runAiPrompt,
@@ -1199,9 +1203,13 @@ function App() {
           providers={providers}
           providerConfigStatus={providerConfigStatus}
           providerEndpointDrafts={providerEndpointDrafts}
+          providerApiKeyDrafts={providerApiKeyDrafts}
           updateProviderEndpointDraft={updateProviderEndpointDraft}
+          updateProviderApiKeyDraft={updateProviderApiKeyDraft}
           toggleProvider={toggleProvider}
           saveProviderEndpoint={saveProviderEndpoint}
+          saveProviderApiKey={saveProviderApiKey}
+          clearProviderApiKey={clearProviderApiKey}
           activeSession={activeSession}
           sessionStatus={sessionStatus}
           restartActiveSession={restartActiveSession}

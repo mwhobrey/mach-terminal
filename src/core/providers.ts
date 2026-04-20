@@ -8,6 +8,7 @@ export interface ProviderDescriptor {
   enabled: boolean;
   endpoint?: string;
   envHint?: string;
+  hasStoredKey?: boolean;
 }
 
 export interface ProviderSettings {

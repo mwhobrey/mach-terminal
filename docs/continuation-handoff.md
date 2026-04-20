@@ -1,6 +1,6 @@
 # Continuation Handoff
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 ## Purpose
 
@@ -68,6 +68,36 @@ Primary files:
 - `src/core/statusStripGlyphAssets.ts`
 - `public/*.png`, `public/fonts/*`
 
+### Provider expansion tranche (OpenAI + Anthropic + custom)
+
+- Added executable adapters for `openai`, `anthropic`, and `custom-openai`.
+- Added secure provider key storage using OS credential keychain + Tauri commands:
+  - `provider_api_key_set`
+  - `provider_api_key_clear`
+  - `provider_api_key_status`
+- Extended provider routing models beyond Ollama:
+  - `openai_model`
+  - `anthropic_model`
+  - `custom_openai_model`
+- Updated Settings and onboarding advanced AI flows:
+  - in-app API key entry/clear controls
+  - stored-key status indicators
+  - per-provider model routing fields
+- Extended provider host and settings persistence tests for new contracts.
+
+Primary files:
+
+- `src-tauri/src/provider_host.rs`
+- `src-tauri/src/provider_secrets.rs`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/models.rs`
+- `src-tauri/src/settings.rs`
+- `src/hooks/useProviderAiState.ts`
+- `src/components/AppSettingsModal.tsx`
+- `src/components/FirstRunSetup.tsx`
+- `src/core/terminal.ts`
+- `src/core/providerUiState.ts`
+
 ## Important Contracts
 
 ### Shell integration status contract
@@ -106,19 +136,7 @@ Do not set this flag from general onboarding Save/Quick start/Skip flows.
 
 ## Open Backlog (Recommended Priority)
 
-### 1) Provider expansion tranche
-
-Goal: add real adapters beyond Ollama (OpenAI/Anthropic/custom OpenAI-compatible)
-with routing + UX + tests.
-
-Anchor files:
-
-- `src-tauri/src/provider_host.rs`
-- `src/core/providers.ts`
-- `src/components/AppSettingsModal.tsx`
-- `src/hooks/useProviderAiState.ts`
-
-### 2) Plugin runtime contract expansion
+### 1) Plugin runtime contract expansion
 
 Goal: formalize plugin execution contracts, capability boundaries, and telemetry.
 
@@ -128,7 +146,7 @@ Anchor files:
 - `src-tauri/src/lib.rs` (plugin command bridge)
 - `docs/runtime-contracts.md`
 
-### 3) Shell Integration P5 (optional follow-up)
+### 2) Shell Integration P5 (optional follow-up)
 
 Goal: reduce maintenance overhead by extracting common shell integration logic
 into explicit shell strategy helpers and add table-driven matrix tests.

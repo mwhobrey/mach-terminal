@@ -31,6 +31,18 @@ fn default_settings_schema_version() -> u32 {
     SETTINGS_SCHEMA_VERSION
 }
 
+fn default_openai_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
+fn default_anthropic_model() -> String {
+    "claude-3-5-haiku-latest".to_string()
+}
+
+fn default_custom_openai_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalProfile {
     pub shell: Option<String>,
@@ -65,6 +77,12 @@ pub struct ProviderSettings {
 pub struct ProviderRoutingSettings {
     pub default_provider: String,
     pub ollama_model: String,
+    #[serde(default = "default_openai_model")]
+    pub openai_model: String,
+    #[serde(default = "default_anthropic_model")]
+    pub anthropic_model: String,
+    #[serde(default = "default_custom_openai_model")]
+    pub custom_openai_model: String,
     pub ai_feature_enabled: bool,
 }
 
@@ -73,6 +91,9 @@ impl Default for ProviderRoutingSettings {
         Self {
             default_provider: "ollama".to_string(),
             ollama_model: "llama3.2".to_string(),
+            openai_model: "gpt-4o-mini".to_string(),
+            anthropic_model: "claude-3-5-haiku-latest".to_string(),
+            custom_openai_model: "gpt-4o-mini".to_string(),
             ai_feature_enabled: false,
         }
     }
@@ -193,6 +214,9 @@ pub struct ProfilePatch {
 pub struct ProviderRoutingPatch {
     pub default_provider: Option<String>,
     pub ollama_model: Option<String>,
+    pub openai_model: Option<String>,
+    pub anthropic_model: Option<String>,
+    pub custom_openai_model: Option<String>,
     pub ai_feature_enabled: Option<bool>,
 }
 
@@ -264,7 +288,18 @@ pub struct ProviderDescriptor {
     pub kind: String,
     pub enabled: bool,
     pub endpoint: Option<String>,
+    #[serde(default, rename = "envHint")]
+    pub env_hint: Option<String>,
     pub status: String,
+    #[serde(default, rename = "hasStoredKey")]
+    pub has_stored_key: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderApiKeyStatus {
+    pub provider_id: String,
+    pub has_stored_key: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

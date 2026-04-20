@@ -46,9 +46,13 @@ export type AppSettingsModalProps = {
   providers: ProviderDescriptor[];
   providerConfigStatus: string | null;
   providerEndpointDrafts: Record<string, string>;
+  providerApiKeyDrafts: Record<string, string>;
   updateProviderEndpointDraft: (id: string, value: string) => void;
+  updateProviderApiKeyDraft: (id: string, value: string) => void;
   toggleProvider: (id: string, enabled: boolean) => void | Promise<void>;
   saveProviderEndpoint: (id: string) => void | Promise<void>;
+  saveProviderApiKey: (id: string) => void | Promise<void>;
+  clearProviderApiKey: (id: string) => void | Promise<void>;
   activeSession: PtySessionInfo | undefined;
   sessionStatus: Record<string, SessionStatus>;
   restartActiveSession: () => void | Promise<void>;
@@ -62,8 +66,22 @@ export type AppSettingsModalProps = {
   updateStatus: string;
   updaterEnabled: boolean;
   routing: ProviderRoutingSettings;
-  routingDraft: { default_provider: string; ollama_model: string };
-  setRoutingDraft: Dispatch<SetStateAction<{ default_provider: string; ollama_model: string }>>;
+  routingDraft: {
+    default_provider: string;
+    ollama_model: string;
+    openai_model: string;
+    anthropic_model: string;
+    custom_openai_model: string;
+  };
+  setRoutingDraft: Dispatch<
+    SetStateAction<{
+      default_provider: string;
+      ollama_model: string;
+      openai_model: string;
+      anthropic_model: string;
+      custom_openai_model: string;
+    }>
+  >;
   saveRoutingConfig: () => void | Promise<void>;
   setAiOptIn: (enabled: boolean) => void | Promise<void>;
   aiPrompt: string;
@@ -123,9 +141,13 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
     providers,
     providerConfigStatus,
     providerEndpointDrafts,
+    providerApiKeyDrafts,
     updateProviderEndpointDraft,
+    updateProviderApiKeyDraft,
     toggleProvider,
     saveProviderEndpoint,
+    saveProviderApiKey,
+    clearProviderApiKey,
     activeSession,
     sessionStatus,
     restartActiveSession,
@@ -295,6 +317,37 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                         save endpoint
                       </button>
                     </div>
+                    <div className="provider-block-endpoint">
+                      <input
+                        type="password"
+                        value={providerApiKeyDrafts[provider.id] ?? ""}
+                        onChange={(event) => updateProviderApiKeyDraft(provider.id, event.currentTarget.value)}
+                        placeholder={provider.hasStoredKey ? "API key stored (enter to replace)" : "API key"}
+                        className="inline-input"
+                        aria-label={`${provider.id} api key`}
+                        disabled={!isExecutableProvider(provider.id)}
+                      />
+                      <button
+                        type="button"
+                        className="inline-btn ghost"
+                        onClick={() => void saveProviderApiKey(provider.id)}
+                        disabled={!isExecutableProvider(provider.id)}
+                      >
+                        save key
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-btn ghost"
+                        onClick={() => void clearProviderApiKey(provider.id)}
+                        disabled={!isExecutableProvider(provider.id)}
+                      >
+                        clear key
+                      </button>
+                    </div>
+                    <p className="muted-block">
+                      auth: {provider.hasStoredKey ? "stored in secure keychain" : "no stored key"}{" "}
+                      {provider.envHint ? `(env fallback: ${provider.envHint})` : ""}
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -378,6 +431,31 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                   <input
                     value={routingDraft.ollama_model}
                     onChange={(event) => setRoutingDraft((current) => ({ ...current, ollama_model: event.target.value }))}
+                  />
+                </label>
+                <label className="field-row">
+                  <span>OpenAI model</span>
+                  <input
+                    value={routingDraft.openai_model}
+                    onChange={(event) => setRoutingDraft((current) => ({ ...current, openai_model: event.target.value }))}
+                  />
+                </label>
+                <label className="field-row">
+                  <span>Anthropic model</span>
+                  <input
+                    value={routingDraft.anthropic_model}
+                    onChange={(event) =>
+                      setRoutingDraft((current) => ({ ...current, anthropic_model: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="field-row">
+                  <span>Custom OpenAI model</span>
+                  <input
+                    value={routingDraft.custom_openai_model}
+                    onChange={(event) =>
+                      setRoutingDraft((current) => ({ ...current, custom_openai_model: event.target.value }))
+                    }
                   />
                 </label>
                 <button type="button" className="inline-btn ghost" onClick={() => void saveRoutingConfig()}>

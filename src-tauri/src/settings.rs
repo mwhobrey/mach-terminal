@@ -63,6 +63,15 @@ fn validate_provider_routing(
     if routing.ollama_model.trim().is_empty() {
         return Err("provider routing ollama_model cannot be empty".to_string());
     }
+    if routing.openai_model.trim().is_empty() {
+        return Err("provider routing openai_model cannot be empty".to_string());
+    }
+    if routing.anthropic_model.trim().is_empty() {
+        return Err("provider routing anthropic_model cannot be empty".to_string());
+    }
+    if routing.custom_openai_model.trim().is_empty() {
+        return Err("provider routing custom_openai_model cannot be empty".to_string());
+    }
     Ok(())
 }
 
@@ -173,6 +182,15 @@ pub fn apply_provider_routing_patch(routing: &mut ProviderRoutingSettings, patch
     }
     if let Some(ollama_model) = patch.ollama_model.clone() {
         routing.ollama_model = ollama_model;
+    }
+    if let Some(openai_model) = patch.openai_model.clone() {
+        routing.openai_model = openai_model;
+    }
+    if let Some(anthropic_model) = patch.anthropic_model.clone() {
+        routing.anthropic_model = anthropic_model;
+    }
+    if let Some(custom_openai_model) = patch.custom_openai_model.clone() {
+        routing.custom_openai_model = custom_openai_model;
     }
     if let Some(ai_feature_enabled) = patch.ai_feature_enabled {
         routing.ai_feature_enabled = ai_feature_enabled;
@@ -420,6 +438,9 @@ pub fn set_provider_routing(
     let normalized_routing = ProviderRoutingSettings {
         default_provider: provider_routing.default_provider.trim().to_string(),
         ollama_model: provider_routing.ollama_model.trim().to_string(),
+        openai_model: provider_routing.openai_model.trim().to_string(),
+        anthropic_model: provider_routing.anthropic_model.trim().to_string(),
+        custom_openai_model: provider_routing.custom_openai_model.trim().to_string(),
         ai_feature_enabled: provider_routing.ai_feature_enabled,
     };
     update_settings(app, |settings| {
@@ -437,6 +458,9 @@ pub fn patch_provider_routing(
         apply_provider_routing_patch(&mut settings.provider_routing, &patch);
         settings.provider_routing.default_provider = settings.provider_routing.default_provider.trim().to_string();
         settings.provider_routing.ollama_model = settings.provider_routing.ollama_model.trim().to_string();
+        settings.provider_routing.openai_model = settings.provider_routing.openai_model.trim().to_string();
+        settings.provider_routing.anthropic_model = settings.provider_routing.anthropic_model.trim().to_string();
+        settings.provider_routing.custom_openai_model = settings.provider_routing.custom_openai_model.trim().to_string();
         validate_provider_routing(&settings.providers, &settings.provider_routing)?;
         Ok(settings.provider_routing.clone())
     })

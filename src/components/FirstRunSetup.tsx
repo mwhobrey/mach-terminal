@@ -3,6 +3,7 @@ import { normalizeQuickStartProfile, QUICKSTART_ROUTING, toQuickStartProviders }
 import { isExecutableProvider } from "../core/providerUiState";
 import type { ProviderRoutingSettings, ProviderSettings, TerminalProfile } from "../core/terminal";
 import {
+  providerApiKeySet,
   profileGet,
   profilePatch,
   providerEndpointSet,
@@ -55,8 +56,12 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
   const [routing, setRouting] = useState<ProviderRoutingSettings>({
     default_provider: "ollama",
     ollama_model: "llama3.2",
+    openai_model: "gpt-4o-mini",
+    anthropic_model: "claude-3-5-haiku-latest",
+    custom_openai_model: "gpt-4o-mini",
     ai_feature_enabled: false,
   });
+  const [providerApiKeyDrafts, setProviderApiKeyDrafts] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -98,6 +103,12 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
         if (!cancelled) {
           setProfile(p);
           setProviders(pv);
+          setProviderApiKeyDrafts(() =>
+            pv.reduce<Record<string, string>>((acc, provider) => {
+              acc[provider.id] = "";
+              return acc;
+            }, {}),
+          );
           setRouting(r);
           setPwshOnboardingPromptSeen(nextPromptSeen);
           setPwshHookAlreadyInstalled(nextHookInstalled);
@@ -133,11 +144,18 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
         providers.map(async (provider) => {
           await providerSetEnabled(provider.id, provider.enabled);
           await providerEndpointSet(provider.id, provider.endpoint ?? null);
+          const apiKey = providerApiKeyDrafts[provider.id]?.trim();
+          if (apiKey) {
+            await providerApiKeySet(provider.id, apiKey);
+          }
         }),
       );
       await providerRoutingPatch({
         default_provider: routing.default_provider,
         ollama_model: routing.ollama_model,
+        openai_model: routing.openai_model,
+        anthropic_model: routing.anthropic_model,
+        custom_openai_model: routing.custom_openai_model,
         ai_feature_enabled: routing.ai_feature_enabled,
       });
       window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "done");
@@ -148,7 +166,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [profile, providers, routing, onClose, onSaved]);
+  }, [onClose, onSaved, profile, providerApiKeyDrafts, providers, routing]);
 
   const quickStart = useCallback(async () => {
     setLoading(true);
@@ -172,6 +190,9 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
       await providerRoutingPatch({
         default_provider: QUICKSTART_ROUTING.default_provider,
         ollama_model: QUICKSTART_ROUTING.ollama_model,
+        openai_model: QUICKSTART_ROUTING.openai_model,
+        anthropic_model: QUICKSTART_ROUTING.anthropic_model,
+        custom_openai_model: QUICKSTART_ROUTING.custom_openai_model,
         ai_feature_enabled: QUICKSTART_ROUTING.ai_feature_enabled,
       });
       window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "done");
@@ -444,6 +465,16 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
                         onChange={(e) => updateProvider(row.id, { endpoint: e.target.value || undefined })}
                         disabled={!executable}
                       />
+                      <input
+                        type="password"
+                        className="endpoint-input"
+                        placeholder="API key (stored securely)"
+                        value={providerApiKeyDrafts[row.id] ?? ""}
+                        onChange={(e) =>
+                          setProviderApiKeyDrafts((current) => ({ ...current, [row.id]: e.target.value }))
+                        }
+                        disabled={!executable}
+                      />
                       {row.api_key_env ? (
                         <small className="muted-block">API key env: {row.api_key_env}</small>
                       ) : null}
@@ -473,6 +504,30 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
                   type="text"
                   value={routing.ollama_model}
                   onChange={(e) => setRouting((r) => ({ ...r, ollama_model: e.target.value }))}
+                />
+              </label>
+              <label className="field-row">
+                <span>OpenAI model</span>
+                <input
+                  type="text"
+                  value={routing.openai_model}
+                  onChange={(e) => setRouting((r) => ({ ...r, openai_model: e.target.value }))}
+                />
+              </label>
+              <label className="field-row">
+                <span>Anthropic model</span>
+                <input
+                  type="text"
+                  value={routing.anthropic_model}
+                  onChange={(e) => setRouting((r) => ({ ...r, anthropic_model: e.target.value }))}
+                />
+              </label>
+              <label className="field-row">
+                <span>Custom OpenAI model</span>
+                <input
+                  type="text"
+                  value={routing.custom_openai_model}
+                  onChange={(e) => setRouting((r) => ({ ...r, custom_openai_model: e.target.value }))}
                 />
               </label>
               <label className="toggle-row">

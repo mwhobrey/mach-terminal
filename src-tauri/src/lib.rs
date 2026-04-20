@@ -6,6 +6,7 @@ pub mod shell_integration;
 pub mod shell_context;
 mod plugin_host;
 pub mod provider_host;
+pub mod provider_secrets;
 pub mod session_manager;
 pub mod settings;
 mod terminal_core;
@@ -13,16 +14,16 @@ pub mod workspace_store;
 mod telemetry;
 
 use crate::models::{
-    AiExecuteRequest, AiExecuteResponse, HistoryEntry, HistoryQueryRequest, ProfilePatch, ProviderDescriptor,
-    ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings, PtySessionInfo, PtySpawnRequest,
-    RuntimeCapabilitiesSnapshot, RuntimeDebugSnapshot, RuntimeMetricsSnapshot, SettingsSchemaDebug,
+    AiExecuteRequest, AiExecuteResponse, HistoryEntry, HistoryQueryRequest, ProfilePatch, ProviderApiKeyStatus,
+    ProviderDescriptor, ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings, PtySessionInfo,
+    PtySpawnRequest, RuntimeCapabilitiesSnapshot, RuntimeDebugSnapshot, RuntimeMetricsSnapshot, SettingsSchemaDebug,
     ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, WorkspaceLayout,
 };
 use crate::plugin_host::{PluginExecutionResult, PluginHost};
 use crate::session_manager::SessionManager;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, RunEvent, State};
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
 struct AiRuntime {
     client: reqwest::Client,
@@ -95,6 +96,42 @@ fn provider_endpoint_set(
     settings::set_provider_endpoint(&app, &provider_id, endpoint)
 }
 
+fn assert_provider_configured(app: &AppHandle, provider_id: &str) -> Result<(), String> {
+    let configured = settings::get_provider_settings(app)?
+        .iter()
+        .any(|provider| provider.id == provider_id);
+    if configured {
+        Ok(())
+    } else {
+        Err(format!("provider `{provider_id}` is not configured"))
+    }
+}
+
+#[tauri::command]
+#[instrument(skip(app, api_key))]
+fn provider_api_key_set(app: AppHandle, provider_id: String, api_key: String) -> Result<(), String> {
+    assert_provider_configured(&app, &provider_id)?;
+    provider_secrets::set_provider_api_key(&provider_id, &api_key).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[instrument(skip(app))]
+fn provider_api_key_clear(app: AppHandle, provider_id: String) -> Result<(), String> {
+    assert_provider_configured(&app, &provider_id)?;
+    provider_secrets::clear_provider_api_key(&provider_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[instrument(skip(app))]
+fn provider_api_key_status(app: AppHandle, provider_id: String) -> Result<ProviderApiKeyStatus, String> {
+    assert_provider_configured(&app, &provider_id)?;
+    let has_stored_key = provider_secrets::has_provider_api_key(&provider_id).map_err(|error| error.to_string())?;
+    Ok(ProviderApiKeyStatus {
+        provider_id,
+        has_stored_key,
+    })
+}
+
 #[tauri::command]
 #[instrument(skip(app))]
 fn provider_routing_get(app: AppHandle) -> Result<ProviderRoutingSettings, String> {
@@ -141,7 +178,21 @@ fn workspace_layout_set(app: AppHandle, layout: WorkspaceLayout) -> Result<(), S
 #[instrument(skip(app))]
 fn provider_list(app: AppHandle) -> Result<Vec<ProviderDescriptor>, String> {
     let settings = settings::load_settings(&app)?;
-    Ok(provider_host::provider_descriptors(&settings.providers))
+    let mut descriptors = provider_host::provider_descriptors(&settings.providers);
+    for descriptor in &mut descriptors {
+        descriptor.has_stored_key = match provider_secrets::has_provider_api_key(&descriptor.id) {
+            Ok(has_key) => has_key,
+            Err(error) => {
+                warn!(
+                    provider_id = descriptor.id.as_str(),
+                    error = %error,
+                    "failed to read provider key status; returning false"
+                );
+                false
+            }
+        };
+    }
+    Ok(descriptors)
 }
 
 #[tauri::command]
@@ -329,6 +380,9 @@ pub fn run() {
             provider_settings_set,
             provider_set_enabled,
             provider_endpoint_set,
+            provider_api_key_set,
+            provider_api_key_clear,
+            provider_api_key_status,
             provider_routing_get,
             provider_routing_set,
             provider_routing_patch,

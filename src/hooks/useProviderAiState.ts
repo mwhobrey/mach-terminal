@@ -3,6 +3,8 @@ import { aiErrorStatusMessage, isExecutableProvider, providerToggleStatus } from
 import { PROVIDER_REGISTRY, type ProviderDescriptor } from "../core/providers";
 import {
   aiExecute,
+  providerApiKeyClear,
+  providerApiKeySet,
   providerEndpointSet,
   providerList,
   providerRoutingPatch,
@@ -15,6 +17,14 @@ import {
   type ProviderRoutingSettings,
   type PtySessionInfo,
 } from "../core/terminal";
+
+type RoutingDraft = {
+  default_provider: string;
+  ollama_model: string;
+  openai_model: string;
+  anthropic_model: string;
+  custom_openai_model: string;
+};
 
 function endpointDraftsFromProviders(providers: ProviderDescriptor[]): Record<string, string> {
   return providers.reduce<Record<string, string>>((drafts, provider) => {
@@ -65,12 +75,19 @@ export function useProviderAiState({
   const [routing, setRouting] = useState<ProviderRoutingSettings>({
     default_provider: "ollama",
     ollama_model: "llama3.2",
+    openai_model: "gpt-4o-mini",
+    anthropic_model: "claude-3-5-haiku-latest",
+    custom_openai_model: "gpt-4o-mini",
     ai_feature_enabled: false,
   });
-  const [routingDraft, setRoutingDraft] = useState<{ default_provider: string; ollama_model: string }>({
+  const [routingDraft, setRoutingDraft] = useState<RoutingDraft>({
     default_provider: "ollama",
     ollama_model: "llama3.2",
+    openai_model: "gpt-4o-mini",
+    anthropic_model: "claude-3-5-haiku-latest",
+    custom_openai_model: "gpt-4o-mini",
   });
+  const [providerApiKeyDrafts, setProviderApiKeyDrafts] = useState<Record<string, string>>({});
   const [providerEndpointDrafts, setProviderEndpointDrafts] = useState<Record<string, string>>({});
   const [providerConfigStatus, setProviderConfigStatus] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("summarize last command");
@@ -107,6 +124,9 @@ export function useProviderAiState({
       setRoutingDraft({
         default_provider: defaultProvider,
         ollama_model: providerRouting.ollama_model,
+        openai_model: providerRouting.openai_model,
+        anthropic_model: providerRouting.anthropic_model,
+        custom_openai_model: providerRouting.custom_openai_model,
       });
       setProviderEndpointDrafts(endpointDraftsFromProviders(providerDescriptors));
     },
@@ -116,6 +136,12 @@ export function useProviderAiState({
   const applyProviderDescriptors = useCallback((providerDescriptors: ProviderDescriptor[]) => {
     setProviders(providerDescriptors);
     setProviderEndpointDrafts(endpointDraftsFromProviders(providerDescriptors));
+    setProviderApiKeyDrafts((current) =>
+      providerDescriptors.reduce<Record<string, string>>((drafts, provider) => {
+        drafts[provider.id] = current[provider.id] ?? "";
+        return drafts;
+      }, {}),
+    );
   }, []);
 
   const toggleProvider = useCallback(async (providerId: string, enabled: boolean) => {
@@ -136,6 +162,39 @@ export function useProviderAiState({
   const updateProviderEndpointDraft = useCallback((providerId: string, endpoint: string) => {
     setProviderEndpointDrafts((current) => ({ ...current, [providerId]: endpoint }));
   }, []);
+
+  const updateProviderApiKeyDraft = useCallback((providerId: string, apiKey: string) => {
+    setProviderApiKeyDrafts((current) => ({ ...current, [providerId]: apiKey }));
+  }, []);
+
+  const saveProviderApiKey = useCallback(async (providerId: string) => {
+    const apiKey = providerApiKeyDrafts[providerId]?.trim() ?? "";
+    if (!apiKey) {
+      setProviderConfigStatus(`Enter an API key for ${providerId} before saving.`);
+      return;
+    }
+    try {
+      await providerApiKeySet(providerId, apiKey);
+      setProviderApiKeyDrafts((current) => ({ ...current, [providerId]: "" }));
+      const providerDescriptors = await providerList();
+      applyProviderDescriptors(providerDescriptors);
+      setProviderConfigStatus(`Saved API key for ${providerId}.`);
+    } catch (error) {
+      onRuntimeError(error instanceof Error ? error.message : "Failed to update provider API key.");
+    }
+  }, [applyProviderDescriptors, onRuntimeError, providerApiKeyDrafts]);
+
+  const clearProviderApiKey = useCallback(async (providerId: string) => {
+    try {
+      await providerApiKeyClear(providerId);
+      setProviderApiKeyDrafts((current) => ({ ...current, [providerId]: "" }));
+      const providerDescriptors = await providerList();
+      applyProviderDescriptors(providerDescriptors);
+      setProviderConfigStatus(`Cleared API key for ${providerId}.`);
+    } catch (error) {
+      onRuntimeError(error instanceof Error ? error.message : "Failed to clear provider API key.");
+    }
+  }, [applyProviderDescriptors, onRuntimeError]);
 
   const saveProviderEndpoint = useCallback(async (providerId: string) => {
     const endpoint = providerEndpointDrafts[providerId] ?? "";
@@ -158,17 +217,30 @@ export function useProviderAiState({
       const updated = await providerRoutingPatch({
         default_provider: routingDraft.default_provider,
         ollama_model: routingDraft.ollama_model,
+        openai_model: routingDraft.openai_model,
+        anthropic_model: routingDraft.anthropic_model,
+        custom_openai_model: routingDraft.custom_openai_model,
       });
       setRouting(updated);
       setRoutingDraft({
         default_provider: updated.default_provider,
         ollama_model: updated.ollama_model,
+        openai_model: updated.openai_model,
+        anthropic_model: updated.anthropic_model,
+        custom_openai_model: updated.custom_openai_model,
       });
       setProviderConfigStatus("Saved routing settings.");
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to save routing settings.");
     }
-  }, [onRuntimeError, routingDraft.default_provider, routingDraft.ollama_model]);
+  }, [
+    onRuntimeError,
+    routingDraft.anthropic_model,
+    routingDraft.custom_openai_model,
+    routingDraft.default_provider,
+    routingDraft.ollama_model,
+    routingDraft.openai_model,
+  ]);
 
   const setAiOptIn = useCallback(async (enabled: boolean) => {
     try {
@@ -176,18 +248,32 @@ export function useProviderAiState({
         ...routing,
         default_provider: routingDraft.default_provider,
         ollama_model: routingDraft.ollama_model,
+        openai_model: routingDraft.openai_model,
+        anthropic_model: routingDraft.anthropic_model,
+        custom_openai_model: routingDraft.custom_openai_model,
         ai_feature_enabled: enabled,
       });
       setRouting(updated);
       setRoutingDraft({
         default_provider: updated.default_provider,
         ollama_model: updated.ollama_model,
+        openai_model: updated.openai_model,
+        anthropic_model: updated.anthropic_model,
+        custom_openai_model: updated.custom_openai_model,
       });
       setProviderConfigStatus(enabled ? "AI routing enabled." : "AI routing disabled.");
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
     }
-  }, [onRuntimeError, routing, routingDraft.default_provider, routingDraft.ollama_model]);
+  }, [
+    onRuntimeError,
+    routing,
+    routingDraft.anthropic_model,
+    routingDraft.custom_openai_model,
+    routingDraft.default_provider,
+    routingDraft.ollama_model,
+    routingDraft.openai_model,
+  ]);
 
   const runAiPrompt = useCallback(async () => {
     if (!activeSession) {
@@ -321,6 +407,7 @@ export function useProviderAiState({
     routing,
     routingDraft,
     providerEndpointDrafts,
+    providerApiKeyDrafts,
     providerConfigStatus,
     aiPrompt,
     aiResponse,
@@ -330,10 +417,13 @@ export function useProviderAiState({
     initializeProviderAiState,
     setRoutingDraft,
     updateProviderEndpointDraft,
+    updateProviderApiKeyDraft,
     setAiPrompt,
     setLastAiContext,
     toggleProvider,
     saveProviderEndpoint,
+    saveProviderApiKey,
+    clearProviderApiKey,
     saveRoutingConfig,
     setAiOptIn,
     runAiPrompt,
