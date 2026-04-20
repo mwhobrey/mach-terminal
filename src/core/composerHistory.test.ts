@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAcceptPrediction,
   createComposerHistoryState,
   nextHistoryDraft,
   predictionForDraft,
@@ -34,5 +35,12 @@ describe("composer history contracts", () => {
 
     const downTwo = nextHistoryDraft(state, ENTRIES, "npm r", "next");
     expect(downTwo.draft).toBe("npm r");
+  });
+
+  it("accepts prediction only when cursor is at draft end", () => {
+    expect(canAcceptPrediction("npm", "npm test", 3, 3)).toBe(true);
+    expect(canAcceptPrediction("npm", "npm test", 0, 0)).toBe(false);
+    expect(canAcceptPrediction("npm", "npm", 3, 3)).toBe(false);
+    expect(canAcceptPrediction("npm", null, 3, 3)).toBe(false);
   });
 });

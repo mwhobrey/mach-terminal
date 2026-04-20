@@ -28,6 +28,18 @@ export function predictionForDraft(draft: string, entries: HistoryEntry[]): stri
   return null;
 }
 
+export function canAcceptPrediction(
+  draft: string,
+  prediction: string | null,
+  selectionStart: number,
+  selectionEnd: number,
+): boolean {
+  if (!prediction || prediction === draft) {
+    return false;
+  }
+  return selectionStart === draft.length && selectionEnd === draft.length;
+}
+
 export function nextHistoryDraft(
   state: ComposerHistoryState,
   entries: HistoryEntry[],

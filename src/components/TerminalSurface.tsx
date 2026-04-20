@@ -31,6 +31,7 @@ import {
   nextCompletionIndex,
 } from "../core/composerCompletion";
 import {
+  canAcceptPrediction,
   createComposerHistoryState,
   nextHistoryDraft,
   predictionForDraft,
@@ -1282,9 +1283,9 @@ export function TerminalSurface({
                     }
                     if (e.key === "ArrowRight" && prediction) {
                       const ta = composerTextareaRef.current;
-                      const atEnd =
-                        ta && ta.selectionStart === composerDraft.length && ta.selectionEnd === composerDraft.length;
-                      if (atEnd) {
+                      const selectionStart = ta?.selectionStart ?? composerDraft.length;
+                      const selectionEnd = ta?.selectionEnd ?? composerDraft.length;
+                      if (canAcceptPrediction(composerDraft, prediction, selectionStart, selectionEnd)) {
                         e.preventDefault();
                         setComposerDraft(prediction);
                         return;
@@ -1297,16 +1298,26 @@ export function TerminalSurface({
                     }
                     if (e.key === "Tab") {
                       e.preventDefault();
+                      const ta = composerTextareaRef.current;
+                      const selectionStart = ta?.selectionStart ?? composerDraft.length;
+                      const selectionEnd = ta?.selectionEnd ?? composerDraft.length;
                       const requestKey = completionRequestKey(
                         composerDraft,
-                        composerTextareaRef.current?.selectionStart ?? composerDraft.length,
+                        selectionStart,
                       );
                       const canCycle =
                         completionStateRef.current.requestKey === requestKey && hasCompletionCandidates(completionStateRef.current.response);
                       if (canCycle && cycleComposerCompletion()) {
                         return;
                       }
-                      void requestComposerCompletion();
+                      void requestComposerCompletion().then((applied) => {
+                        if (applied) {
+                          return;
+                        }
+                        if (prediction && canAcceptPrediction(composerDraft, prediction, selectionStart, selectionEnd)) {
+                          setComposerDraft(prediction);
+                        }
+                      });
                       return;
                     }
                     if (e.key === "Enter" && !e.shiftKey) {
