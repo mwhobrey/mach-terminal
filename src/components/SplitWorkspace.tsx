@@ -2,7 +2,12 @@ import type { ReactNode } from "react";
 import { TerminalSurface } from "./TerminalSurface";
 import type { SessionCwdMap } from "../core/sessionCwd";
 import type { SessionExitedInfo } from "../core/sessionLifecycle";
-import type { PtySessionInfo, SessionStatus } from "../core/terminal";
+import type {
+  ComposerCompletionResponse,
+  HistoryEntry,
+  PtySessionInfo,
+  SessionStatus,
+} from "../core/terminal";
 import type { TerminalUiRequest } from "../core/terminalUiRequest";
 import type { WorkspaceState } from "../state/workspace";
 
@@ -21,6 +26,13 @@ interface SplitWorkspaceProps {
   onComposerDraftChange?: (paneId: string, draft: string) => void;
   onAiExplainComposer?: () => void;
   onAiFixComposer?: () => void;
+  historyEntries?: HistoryEntry[];
+  onRequestComposerCompletion?: (request: {
+    draft: string;
+    cursor: number;
+    cwd?: string;
+    shell?: string;
+  }) => Promise<ComposerCompletionResponse>;
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
   onFocusPane: (paneId: string) => void;
@@ -43,6 +55,8 @@ export function SplitWorkspace({
   onComposerDraftChange,
   onAiExplainComposer,
   onAiFixComposer,
+  historyEntries = [],
+  onRequestComposerCompletion,
   onInput,
   onResize,
   onFocusPane,
@@ -89,6 +103,8 @@ export function SplitWorkspace({
               }
               onAiExplainComposer={onAiExplainComposer}
               onAiFixComposer={onAiFixComposer}
+              historyEntries={historyEntries}
+              onRequestComposerCompletion={onRequestComposerCompletion}
               onInput={onInput}
               onResize={onResize}
               onRequestRestartSession={() => onRequestRestartSession(pane.id)}

@@ -33,6 +33,7 @@ import {
   historyQuery,
   historyRecoveryTake,
   historyReplay,
+  composerComplete,
   onAiContext,
   onPtyCwdChanged,
   onPtyLifecycle,
@@ -1112,6 +1113,16 @@ function App() {
     );
   }, [aiInsightDismissed, aiRequestInFlight, aiRequestStatus, aiResponse]);
 
+  const requestComposerCompletion = useCallback(
+    async (request: { draft: string; cursor: number; cwd?: string; shell?: string }) => {
+      return composerComplete({
+        ...request,
+        limit: 60,
+      });
+    },
+    [],
+  );
+
   return (
     <div className="app-frame">
       <CustomTitleBar
@@ -1173,6 +1184,8 @@ function App() {
                 void fixCommand(draft);
               }
             }}
+            historyEntries={historyEntries}
+            onRequestComposerCompletion={requestComposerCompletion}
             onInput={(sessionId, data) => void handleInput(sessionId, data)}
             onResize={(sessionId, cols, rows) => void handleResize(sessionId, cols, rows)}
             onFocusPane={(paneId) => setWorkspace((current) => setActivePane(current, paneId))}

@@ -164,6 +164,26 @@ export interface HistoryQueryRequest {
   limit?: number;
 }
 
+export interface ComposerCompletionRequest {
+  draft: string;
+  cursor: number;
+  cwd?: string;
+  shell?: string;
+  limit?: number;
+}
+
+export interface ComposerCompletionCandidate {
+  value: string;
+  kind: "path" | "command" | string;
+}
+
+export interface ComposerCompletionResponse {
+  replacementStart: number;
+  replacementEnd: number;
+  query: string;
+  candidates: ComposerCompletionCandidate[];
+}
+
 export interface RuntimeMetricsSnapshot {
   output_chunks_emitted: number;
   output_chunks_dropped: number;
@@ -334,6 +354,10 @@ export async function historyRecoveryTake() {
 
 export async function historyReplay(sessionId: string, command: string) {
   return invoke("history_replay", { sessionId, command });
+}
+
+export async function composerComplete(request: ComposerCompletionRequest) {
+  return invoke<ComposerCompletionResponse>("composer_complete", { request });
 }
 
 export async function runtimeMetricsSnapshot() {

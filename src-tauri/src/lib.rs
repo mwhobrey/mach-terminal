@@ -1,4 +1,5 @@
 pub mod models;
+pub mod composer_completion;
 pub mod history_store;
 pub mod input_sanitize;
 pub mod osc7;
@@ -20,6 +21,7 @@ use crate::models::{
     ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, WorkspaceLayout, PluginExecutionResult,
     PluginExecuteRequest, PluginGrantRequest, PluginGrantSnapshot, PluginMetricsSnapshot, PluginPolicyDecision,
 };
+use crate::composer_completion::{ComposerCompletionRequest, ComposerCompletionResponse};
 use crate::plugin_host::PluginHost;
 use crate::session_manager::SessionManager;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -269,6 +271,12 @@ fn history_replay(
 }
 
 #[tauri::command]
+#[instrument(skip(request))]
+fn composer_complete(request: ComposerCompletionRequest) -> Result<ComposerCompletionResponse, String> {
+    composer_completion::complete(request)
+}
+
+#[tauri::command]
 #[instrument(skip(manager))]
 fn runtime_metrics_snapshot(manager: State<'_, SessionManager>) -> Result<RuntimeMetricsSnapshot, String> {
     manager.metrics_snapshot()
@@ -408,6 +416,7 @@ pub fn run() {
             history_query,
             history_recovery_take,
             history_replay,
+            composer_complete,
             runtime_metrics_snapshot,
             runtime_debug_snapshot,
             plugin_grant_capability,

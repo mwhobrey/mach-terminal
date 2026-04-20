@@ -131,10 +131,14 @@ impl SessionManager {
         if let Some(cwd_value) = &cwd {
             command_builder.cwd(PathBuf::from(cwd_value));
         }
+        // Keep shell env as close as possible to parent process defaults so PATH/tooling
+        // resolution (npm, git, language toolchains) matches normal terminal sessions.
+        for (key, value) in std::env::vars() {
+            command_builder.env(key, value);
+        }
         for (key, value) in profile.env {
             command_builder.env(key, value);
         }
-        command_builder.env("MACH_TERMINAL", "1");
         if profile.minimal_shell_prompt {
             command_builder.env("MACH_TERMINAL_MINIMAL_PROMPT", "1");
         }

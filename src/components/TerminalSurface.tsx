@@ -22,7 +22,20 @@ import { summarizeExitedInfo } from "../core/sessionExitSummary";
 import { buildFindOptions, formatFindStatus } from "../core/terminalFindStatus";
 import { evaluateTerminalUiIntent } from "../core/terminalUiIntent";
 import type { TerminalUiRequest } from "../core/terminalUiRequest";
-import type { PtySessionInfo, SessionStatus } from "../core/terminal";
+import type { ComposerCompletionResponse, HistoryEntry, PtySessionInfo, SessionStatus } from "../core/terminal";
+import {
+  applyCompletionCandidate,
+  completionRequestKey,
+  createComposerCompletionState,
+  hasCompletionCandidates,
+  nextCompletionIndex,
+} from "../core/composerCompletion";
+import {
+  createComposerHistoryState,
+  nextHistoryDraft,
+  predictionForDraft,
+  type ComposerHistoryDirection,
+} from "../core/composerHistory";
 import { MACH_TERMINAL_MONO_FONT } from "../core/terminalUiFont";
 import { MachStatusStrip } from "./MachStatusStrip";
 
@@ -121,6 +134,13 @@ interface TerminalSurfaceProps {
   onComposerDraftChange?: (draft: string) => void;
   onAiExplainComposer?: () => void;
   onAiFixComposer?: () => void;
+  historyEntries?: HistoryEntry[];
+  onRequestComposerCompletion?: (request: {
+    draft: string;
+    cursor: number;
+    cwd?: string;
+    shell?: string;
+  }) => Promise<ComposerCompletionResponse>;
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
   onRequestRestartSession?: () => void;
@@ -142,6 +162,8 @@ export function TerminalSurface({
   onComposerDraftChange,
   onAiExplainComposer,
   onAiFixComposer,
+  historyEntries = [],
+  onRequestComposerCompletion,
   onInput,
   onResize,
   onRequestRestartSession,
@@ -204,7 +226,11 @@ export function TerminalSurface({
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [composerDraft, setComposerDraft] = useState("");
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const composerFocusedRef = useRef(false);
+  const completionRequestSeqRef = useRef(0);
+  const completionStateRef = useRef(createComposerCompletionState());
+  const historyStateRef = useRef(createComposerHistoryState());
+  const [completionState, setCompletionState] = useState(createComposerCompletionState);
+  const [prediction, setPrediction] = useState<string | null>(null);
   const terminalPanelRef = useRef<HTMLElement | null>(null);
   const composerLocked = !activeSession || Boolean(exitedInfo);
 
@@ -221,6 +247,7 @@ export function TerminalSurface({
   findOpenRef.current = findOpen;
   findQueryRef.current = findQuery;
   setFindOpenRef.current = setFindOpen;
+  completionStateRef.current = completionState;
 
   const currentFindOptions = useCallback(
     (): ISearchOptions => ({
@@ -252,12 +279,25 @@ export function TerminalSurface({
     searchAddonRef.current?.findPrevious(term, currentFindOptions());
   }, [currentFindOptions]);
 
+  const focusTerminalInput = useCallback(() => {
+    terminalRef.current?.focus();
+  }, []);
+
   const sendTextToPty = useCallback((text: string) => {
     const session = activeSessionRef.current;
     if (!text || !session) {
       return;
     }
     onInputRef.current(session.id, text);
+  }, []);
+
+  const resetCompletionState = useCallback((error: string | null = null) => {
+    setCompletionState({
+      response: null,
+      selectedIndex: -1,
+      requestKey: null,
+      error,
+    });
   }, []);
 
   const submitComposer = useCallback(() => {
@@ -268,8 +308,110 @@ export function TerminalSurface({
     const payload = `${normalized.replace(/\n/g, "\r\n")}\r`;
     sendTextToPty(payload);
     setComposerDraft("");
+    historyStateRef.current = createComposerHistoryState();
+    resetCompletionState(null);
     queueMicrotask(() => composerTextareaRef.current?.focus());
-  }, [composerDraft, sendTextToPty]);
+  }, [composerDraft, resetCompletionState, sendTextToPty]);
+
+  const requestComposerCompletion = useCallback(async (): Promise<boolean> => {
+    if (!onRequestComposerCompletion || composerLocked) {
+      return false;
+    }
+    const textarea = composerTextareaRef.current;
+    const cursor = textarea?.selectionStart ?? composerDraft.length;
+    const requestKey = completionRequestKey(composerDraft, cursor);
+    const nextSeq = completionRequestSeqRef.current + 1;
+    completionRequestSeqRef.current = nextSeq;
+    try {
+      const response = await onRequestComposerCompletion({
+        draft: composerDraft,
+        cursor,
+        cwd: liveCwd ?? undefined,
+        shell: activeSession?.shell,
+      });
+      if (completionRequestSeqRef.current !== nextSeq) {
+        return false;
+      }
+      if (!hasCompletionCandidates(response)) {
+        resetCompletionState(null);
+        return false;
+      }
+      const applied = applyCompletionCandidate(composerDraft, response, 0);
+      setComposerDraft(applied.draft);
+      setCompletionState({
+        response,
+        selectedIndex: 0,
+        requestKey,
+        error: null,
+      });
+      queueMicrotask(() => {
+        if (composerTextareaRef.current) {
+          composerTextareaRef.current.selectionStart = applied.cursor;
+          composerTextareaRef.current.selectionEnd = applied.cursor;
+        }
+      });
+      return true;
+    } catch (error) {
+      if (completionRequestSeqRef.current === nextSeq) {
+        resetCompletionState("Completions unavailable");
+      }
+      return false;
+    }
+  }, [
+    activeSession?.shell,
+    composerDraft,
+    composerLocked,
+    liveCwd,
+    onRequestComposerCompletion,
+    resetCompletionState,
+  ]);
+
+  const cycleComposerCompletion = useCallback(() => {
+    const current = completionStateRef.current;
+    if (!current.response || !hasCompletionCandidates(current.response)) {
+      return false;
+    }
+    const nextIndex = nextCompletionIndex(current.response, current.selectedIndex);
+    const applied = applyCompletionCandidate(composerDraft, current.response, nextIndex);
+    setCompletionState((prev) => ({
+      ...prev,
+      selectedIndex: nextIndex,
+      error: null,
+    }));
+    setComposerDraft(applied.draft);
+    queueMicrotask(() => {
+      if (composerTextareaRef.current) {
+        composerTextareaRef.current.selectionStart = applied.cursor;
+        composerTextareaRef.current.selectionEnd = applied.cursor;
+      }
+    });
+    return true;
+  }, [composerDraft]);
+
+  const stepComposerHistory = useCallback(
+    (direction: ComposerHistoryDirection) => {
+      if (composerLocked) {
+        return false;
+      }
+      const next = nextHistoryDraft(historyStateRef.current, historyEntries, composerDraft, direction);
+      historyStateRef.current = next.state;
+      if (next.draft === null) {
+        return false;
+      }
+      setComposerDraft(next.draft);
+      resetCompletionState(null);
+      queueMicrotask(() => {
+        const ta = composerTextareaRef.current;
+        if (ta) {
+          const cursor = ta.value.length;
+          ta.selectionStart = cursor;
+          ta.selectionEnd = cursor;
+        }
+      });
+      return true;
+    },
+    [composerDraft, composerLocked, historyEntries, resetCompletionState],
+  );
 
   const syncComposerHeight = useCallback(() => {
     const ta = composerTextareaRef.current;
@@ -426,7 +568,9 @@ export function TerminalSurface({
     findResultStateRef.current = { resultIndex: -1, resultCount: 0 };
     setFindResultState({ resultIndex: -1, resultCount: 0 });
     setComposerDraft("");
-  }, [activeSession?.id]);
+    historyStateRef.current = createComposerHistoryState();
+    resetCompletionState(null);
+  }, [activeSession?.id, resetCompletionState]);
 
   useEffect(() => {
     if (!exitedInfo) {
@@ -834,17 +978,14 @@ export function TerminalSurface({
     if (!isFocused) {
       return;
     }
-    if (composerFocusedRef.current) {
-      return;
-    }
     if (findOpenRef.current) {
       return;
     }
     const id = window.requestAnimationFrame(() => {
-      composerTextareaRef.current?.focus();
+      focusTerminalInput();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [isFocused]);
+  }, [focusTerminalInput, isFocused]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -907,6 +1048,11 @@ export function TerminalSurface({
   }, [exitedInfo]);
 
   useEffect(() => {
+    const nextPrediction = predictionForDraft(composerDraft, historyEntries);
+    setPrediction(nextPrediction);
+  }, [composerDraft, historyEntries]);
+
+  useEffect(() => {
     onComposerDraftChange?.(composerDraft);
   }, [composerDraft, onComposerDraftChange]);
 
@@ -959,7 +1105,7 @@ export function TerminalSurface({
                 if (e.key === "Escape") {
                   e.preventDefault();
                   closeFind();
-                  composerTextareaRef.current?.focus();
+                  focusTerminalInput();
                   return;
                 }
                 if (e.key === "Enter") {
@@ -1101,7 +1247,7 @@ export function TerminalSurface({
                 if (findOpenRef.current) {
                   return;
                 }
-                composerTextareaRef.current?.focus();
+                focusTerminalInput();
               }}
             >
               <div ref={containerRef} className="terminal-container" tabIndex={-1} />
@@ -1118,16 +1264,51 @@ export function TerminalSurface({
                   placeholder={composerLocked ? "Session unavailable…" : "Type a command…"}
                   disabled={composerLocked}
                   value={composerDraft}
-                  onChange={(e) => setComposerDraft(e.target.value)}
-                  onFocus={() => {
-                    composerFocusedRef.current = true;
-                  }}
-                  onBlur={() => {
-                    queueMicrotask(() => {
-                      composerFocusedRef.current = false;
-                    });
+                  onChange={(e) => {
+                    historyStateRef.current = createComposerHistoryState();
+                    resetCompletionState(null);
+                    setComposerDraft(e.target.value);
                   }}
                   onKeyDown={(e) => {
+                    if (e.key === "ArrowUp" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                      e.preventDefault();
+                      stepComposerHistory("prev");
+                      return;
+                    }
+                    if (e.key === "ArrowDown" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                      e.preventDefault();
+                      stepComposerHistory("next");
+                      return;
+                    }
+                    if (e.key === "ArrowRight" && prediction) {
+                      const ta = composerTextareaRef.current;
+                      const atEnd =
+                        ta && ta.selectionStart === composerDraft.length && ta.selectionEnd === composerDraft.length;
+                      if (atEnd) {
+                        e.preventDefault();
+                        setComposerDraft(prediction);
+                        return;
+                      }
+                    }
+                    if (e.key === "Escape" && completionState.response) {
+                      e.preventDefault();
+                      resetCompletionState(null);
+                      return;
+                    }
+                    if (e.key === "Tab") {
+                      e.preventDefault();
+                      const requestKey = completionRequestKey(
+                        composerDraft,
+                        composerTextareaRef.current?.selectionStart ?? composerDraft.length,
+                      );
+                      const canCycle =
+                        completionStateRef.current.requestKey === requestKey && hasCompletionCandidates(completionStateRef.current.response);
+                      if (canCycle && cycleComposerCompletion()) {
+                        return;
+                      }
+                      void requestComposerCompletion();
+                      return;
+                    }
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       submitComposer();
@@ -1140,6 +1321,21 @@ export function TerminalSurface({
                   aria-label="Shell command input"
                 />
               </div>
+              {prediction && prediction !== composerDraft ? (
+                <p className="terminal-composer-prediction" aria-live="polite">
+                  Suggestion: <span>{prediction}</span>
+                </p>
+              ) : null}
+              {completionState.error ? (
+                <p className="terminal-composer-completion-error" aria-live="polite">
+                  {completionState.error}
+                </p>
+              ) : null}
+              {completionState.response && completionState.response.candidates.length > 1 ? (
+                <p className="terminal-composer-completion-meta" aria-live="polite">
+                  Completion {completionState.selectedIndex + 1}/{completionState.response.candidates.length}
+                </p>
+              ) : null}
               {aiAssistEnabled && isFocused && (onAiExplainComposer || onAiFixComposer) ? (
                 <div className="terminal-composer-ai-row">
                   {onAiExplainComposer ? (
@@ -1164,7 +1360,9 @@ export function TerminalSurface({
                   ) : null}
                 </div>
               ) : null}
-              <p className="terminal-composer-footer-hint">Enter to send · Shift+Enter newline</p>
+              <p className="terminal-composer-footer-hint">
+                Enter send · Shift+Enter newline · Tab complete/cycle · Up/Down history · RightArrow accept suggestion
+              </p>
             </div>
           </div>
         </div>

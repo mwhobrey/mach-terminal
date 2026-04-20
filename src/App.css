@@ -1342,6 +1342,30 @@ body {
   color: #737373;
 }
 
+.terminal-composer-prediction,
+.terminal-composer-completion-error,
+.terminal-composer-completion-meta {
+  margin: 0;
+  font-size: 0.66rem;
+  font-family: var(--mach-terminal-mono);
+}
+
+.terminal-composer-prediction {
+  color: #94a3b8;
+}
+
+.terminal-composer-prediction span {
+  color: #cbd5e1;
+}
+
+.terminal-composer-completion-error {
+  color: #f59e0b;
+}
+
+.terminal-composer-completion-meta {
+  color: #64748b;
+}
+
 .split-single {
   display: grid;
   grid-template-columns: 1fr;
