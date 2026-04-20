@@ -15,6 +15,71 @@ interface CommandPaletteProps {
   onRun: (commandId: string) => void;
 }
 
+export interface PaletteKeyDecision {
+  preventDefault: boolean;
+  nextActiveIndex: number;
+  shouldRunSelection: boolean;
+  shouldClose: boolean;
+}
+
+export function decidePaletteKeyAction(args: {
+  key: string;
+  activeIndex: number;
+  filteredCount: number;
+  hasSelection: boolean;
+}): PaletteKeyDecision | null {
+  const { key, activeIndex, filteredCount, hasSelection } = args;
+  if (key === "ArrowDown") {
+    if (filteredCount === 0) {
+      return {
+        preventDefault: true,
+        nextActiveIndex: activeIndex,
+        shouldRunSelection: false,
+        shouldClose: false,
+      };
+    }
+    return {
+      preventDefault: true,
+      nextActiveIndex: (activeIndex + 1) % filteredCount,
+      shouldRunSelection: false,
+      shouldClose: false,
+    };
+  }
+  if (key === "ArrowUp") {
+    if (filteredCount === 0) {
+      return {
+        preventDefault: true,
+        nextActiveIndex: activeIndex,
+        shouldRunSelection: false,
+        shouldClose: false,
+      };
+    }
+    return {
+      preventDefault: true,
+      nextActiveIndex: (activeIndex - 1 + filteredCount) % filteredCount,
+      shouldRunSelection: false,
+      shouldClose: false,
+    };
+  }
+  if (key === "Enter") {
+    return {
+      preventDefault: true,
+      nextActiveIndex: activeIndex,
+      shouldRunSelection: hasSelection,
+      shouldClose: hasSelection,
+    };
+  }
+  if (key === "Escape") {
+    return {
+      preventDefault: true,
+      nextActiveIndex: activeIndex,
+      shouldRunSelection: false,
+      shouldClose: true,
+    };
+  }
+  return null;
+}
+
 export function CommandPalette({ open, commands, onClose, onRun }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -44,34 +109,28 @@ export function CommandPalette({ open, commands, onClose, onRun }: CommandPalett
           placeholder="Type a command..."
           onChange={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              if (filtered.length === 0) {
-                return;
-              }
-              setActiveIndex((current) => (current + 1) % filtered.length);
+            const decision = decidePaletteKeyAction({
+              key: event.key,
+              activeIndex,
+              filteredCount: filtered.length,
+              hasSelection: Boolean(filtered[activeIndex]),
+            });
+            if (!decision) {
               return;
             }
-            if (event.key === "ArrowUp") {
+            if (decision.preventDefault) {
               event.preventDefault();
-              if (filtered.length === 0) {
-                return;
-              }
-              setActiveIndex((current) => (current - 1 + filtered.length) % filtered.length);
-              return;
             }
-            if (event.key === "Enter") {
-              event.preventDefault();
+            if (decision.nextActiveIndex !== activeIndex) {
+              setActiveIndex(decision.nextActiveIndex);
+            }
+            if (decision.shouldRunSelection) {
               const selected = filtered[activeIndex];
-              if (!selected) {
-                return;
+              if (selected) {
+                onRun(selected.id);
               }
-              onRun(selected.id);
-              onClose();
-              return;
             }
-            if (event.key === "Escape") {
-              event.preventDefault();
+            if (decision.shouldClose) {
               onClose();
             }
           }}

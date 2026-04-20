@@ -157,6 +157,24 @@ Primary files:
 - `scripts/nightly-burnin.mjs`
 - `README.md`
 
+### UX smoke expansion batch (palette/find + link safety + exit lifecycle)
+
+- Expanded `test:ux:smoke` targeting to auto-discover smoke suites by `smoke.test.ts` suffix (no per-file script rewrites).
+- Added deterministic smoke contracts for:
+  - command-palette keyboard lifecycle and focused find intent flow
+  - terminal link extraction + activation policy (allow http/https + safe file, reject unsafe schemes/remote file hosts)
+  - exited-session lifecycle composition (overlay summary, tab tooltip code suffix, batch order, restart cwd fallback)
+- Kept quality gates unchanged (signoff + nightly already invoke `test:ux:smoke`) while broadening smoke coverage surface.
+
+Primary files:
+
+- `package.json`
+- `src/components/CommandPalette.tsx`
+- `src/core/paletteFind.smoke.test.ts`
+- `src/core/linkSafety.smoke.test.ts`
+- `src/core/exitLifecycle.smoke.test.ts`
+- `README.md`
+
 ## Important Contracts
 
 ### Shell integration status contract
@@ -195,9 +213,9 @@ Do not set this flag from general onboarding Save/Quick start/Skip flows.
 
 ## Open Backlog (Recommended Priority)
 
-### 1) Scripted UX smoke coverage (expand beyond TerminalSurface tranche)
+### 1) Scripted UX smoke coverage (expand beyond current smoke batch)
 
-Goal: extend scripted smoke coverage from the current `TerminalSurface` subset to additional UX dogfood checklist items.
+Goal: extend scripted smoke coverage from the current palette/find + link-safety + exit-lifecycle batch to additional UX dogfood checklist items.
 
 Anchor files:
 
