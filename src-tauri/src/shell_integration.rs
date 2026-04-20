@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::{
     ShellIntegrationBackupEntry, ShellIntegrationBackupListResult, ShellIntegrationBackupRestoreResult,
@@ -131,7 +131,7 @@ pub struct ShellIntegrationStatus {
     pub shells: Vec<ShellIntegrationShellStatus>,
 }
 
-fn shell_dir(app: &AppHandle) -> Result<PathBuf, String> {
+fn shell_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_local_data_dir()
@@ -139,7 +139,7 @@ fn shell_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(base.join("shell"))
 }
 
-fn materialize_scripts_inner(app: &AppHandle) -> Result<PathBuf, String> {
+fn materialize_scripts_inner<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let dir = shell_dir(app)?;
     fs::create_dir_all(&dir).map_err(|e| format!("failed to create shell dir: {e}"))?;
     let ps1 = dir.join("mach-init.ps1");
@@ -629,7 +629,7 @@ fn unix_profile_shell_status(kind: &str, resolve: Option<PathBuf>, expected_line
 
 #[tauri::command]
 #[tracing::instrument(skip(app))]
-pub fn shell_integration_status(app: AppHandle) -> Result<ShellIntegrationStatus, String> {
+pub fn shell_integration_status<R: Runtime>(app: AppHandle<R>) -> Result<ShellIntegrationStatus, String> {
     let dir = materialize_scripts_inner(&app)?;
     let profile = settings::get_profile(&app).unwrap_or_else(|_| TerminalProfile::default());
 
@@ -1015,6 +1015,65 @@ mod tests {
         assert_eq!(status.backup_count, None);
         assert_eq!(status.marker_present, false);
         assert!(status.error.as_deref().unwrap_or_default().contains("invalid profile path"));
+    }
+
+    #[test]
+    fn shell_status_serialization_preserves_wire_shape_null_semantics() {
+        let status = unresolved_profile_shell_status("pwsh", None, None, "resolver failed".to_string());
+        let value = serde_json::to_value(&status).expect("serialize shell status row");
+        assert_eq!(value.get("shellKind").and_then(|v| v.as_str()), Some("pwsh"));
+        assert_eq!(value.get("profileResolved").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(value.get("health").and_then(|v| v.as_str()), Some("error"));
+        assert!(value.get("profilePath").is_some_and(|v| v.is_null()));
+        assert!(value.get("backupCount").is_some_and(|v| v.is_null()));
+        assert!(value.get("profilePathSource").is_some_and(|v| v.is_null()));
+        assert_eq!(value.get("error").and_then(|v| v.as_str()), Some("resolver failed"));
+    }
+
+    #[test]
+    fn shell_status_canonical_rows_preserve_capabilities_and_allowed_health_values() {
+        let pwsh = build_shell_status_row(
+            "pwsh",
+            Some("C:\\Users\\mike\\profile.ps1".to_string()),
+            true,
+            true,
+            "healthy",
+            Some(2),
+            Some("override"),
+            None,
+        );
+        let bash = build_shell_status_row(
+            "bash",
+            Some("/home/mike/.bashrc".to_string()),
+            true,
+            false,
+            "missing",
+            Some(0),
+            Some("auto"),
+            None,
+        );
+        let zsh = build_shell_status_row(
+            "zsh",
+            Some("/home/mike/.zshrc".to_string()),
+            true,
+            true,
+            "stale",
+            Some(1),
+            Some("auto"),
+            None,
+        );
+        let rows = [pwsh, bash, zsh];
+        let kinds: Vec<&str> = rows.iter().map(|row| row.shell_kind.as_str()).collect();
+        assert_eq!(kinds, vec!["pwsh", "bash", "zsh"]);
+        assert!(rows[0].capabilities.supports_backup_restore);
+        assert!(rows[0].capabilities.supports_profile_override);
+        assert!(rows[1].capabilities.supports_backup_restore);
+        assert!(!rows[1].capabilities.supports_profile_override);
+        assert!(rows[2].capabilities.supports_backup_restore);
+        assert!(!rows[2].capabilities.supports_profile_override);
+        for row in rows {
+            assert!(matches!(row.health.as_str(), "healthy" | "stale" | "missing" | "error"));
+        }
     }
 
     #[test]

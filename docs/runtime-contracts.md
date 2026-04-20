@@ -185,6 +185,10 @@ This document defines the first stable contract between the frontend shell and R
   - marker + expected-line matching feed `health` (`healthy` / `stale` / `missing` / `error`)
   - resolved profile rows preserve per-shell capability and backup-count semantics
   - unresolved/error rows preserve `profilePathSource` semantics (`override`, `auto`, or omitted)
+- Backend tests now lock shell-status wire-shape semantics on serialized rows:
+  - `profilePath`, `backupCount`, `profilePathSource`, and `error` remain explicitly serialized (including null when absent)
+  - canonical row ordering remains `pwsh`, `bash`, `zsh`
+  - capability invariants remain stable per shell kind
 - The P5/P5-followup refactors do not change shell integration payload shapes; they reduce repeated backend branching only.
 
 ## Cross-Platform PTY Behavior

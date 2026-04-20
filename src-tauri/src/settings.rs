@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 const KNOWN_PROVIDER_IDS: [&str; 4] = ["openai", "anthropic", "ollama", "custom-openai"];
 
@@ -75,7 +75,7 @@ fn validate_provider_routing(
     Ok(())
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn settings_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let base_dir = app
         .path()
         .app_config_dir()
@@ -85,7 +85,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(base_dir.join("settings.json"))
 }
 
-pub fn resolve_settings_json_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn resolve_settings_json_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     settings_path(app)
 }
 
@@ -148,7 +148,7 @@ pub fn settings_schema_dump_from_path(path: &Path) -> Result<SettingsSchemaDebug
     })
 }
 
-pub fn settings_schema_dump(app: &AppHandle) -> Result<SettingsSchemaDebug, String> {
+pub fn settings_schema_dump<R: Runtime>(app: &AppHandle<R>) -> Result<SettingsSchemaDebug, String> {
     let path = settings_path(app)?;
     settings_schema_dump_from_path(&path)
 }
@@ -243,7 +243,7 @@ pub fn load_settings_from_path(path: &Path) -> Result<AppSettings, String> {
     }
 }
 
-pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
+pub fn load_settings<R: Runtime>(app: &AppHandle<R>) -> Result<AppSettings, String> {
     let _guard = settings_write_lock()
         .lock()
         .map_err(|error| format!("failed to lock settings state: {error}"))?;
@@ -327,7 +327,7 @@ fn update_settings<T>(
     Ok(result)
 }
 
-pub fn get_profile(app: &AppHandle) -> Result<TerminalProfile, String> {
+pub fn get_profile<R: Runtime>(app: &AppHandle<R>) -> Result<TerminalProfile, String> {
     Ok(load_settings(app)?.profile)
 }
 

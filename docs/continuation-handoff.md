@@ -195,6 +195,21 @@ Primary files:
 - `src-tauri/src/shell_integration.rs`
 - `docs/runtime-contracts.md`
 
+### Shell status contract guards (error paths + wire shape)
+
+- Added backend contract tests for shell-status rows covering:
+  - invalid pwsh override path semantics (`profileResolved=false`, `health=error`, `profilePathSource=override`)
+  - unresolved auto path semantics (`profilePathSource` omitted/null, `backupCount` null)
+  - serialized wire-shape invariants (`profilePath`, `backupCount`, `profilePathSource`, `error`)
+  - canonical shell row ordering/capability invariants (`pwsh`, `bash`, `zsh`)
+- Generalized select settings/shell-integration helpers to runtime-generic `AppHandle<R>` signatures to keep test harness pathways compatible across runtimes.
+
+Primary files:
+
+- `src-tauri/src/shell_integration.rs`
+- `src-tauri/src/settings.rs`
+- `docs/runtime-contracts.md`
+
 ## Important Contracts
 
 ### Shell integration status contract
@@ -245,7 +260,7 @@ Anchor files:
 
 ### 2) Shell Integration P5 follow-up (status-path consolidation)
 
-Goal: continue P5 by adding command-level/status-level integration tests that exercise `shell_integration_status` through Tauri command boundaries (beyond current unit parity coverage) without changing payload contracts.
+Goal: continue P5 by adding full invoke-level command tests for `shell_integration_status` command transport boundaries (beyond current backend wire-shape guards) without changing payload contracts.
 
 Potential tasks:
 
