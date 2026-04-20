@@ -1,6 +1,6 @@
 use crate::models::{
     AppSettings, LegacyAppSettings, ProfilePatch, ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings,
-    SettingsSchemaDebug, TerminalProfile, SETTINGS_SCHEMA_VERSION,
+    SettingsSchemaDebug, ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, SETTINGS_SCHEMA_VERSION,
 };
 use reqwest::Url;
 use std::fs;
@@ -209,6 +209,7 @@ pub fn load_settings_from_path(path: &Path) -> Result<AppSettings, String> {
                         profile: legacy.profile,
                         providers: legacy.providers,
                         provider_routing: legacy.provider_routing,
+                        shell_integration: ShellIntegrationSettings::default(),
                     },
                     true,
                 )
@@ -323,6 +324,25 @@ pub fn patch_profile(app: &AppHandle, patch: ProfilePatch) -> Result<TerminalPro
     update_settings(app, |settings| {
         apply_profile_patch(&mut settings.profile, &patch);
         Ok(settings.profile.clone())
+    })
+}
+
+pub fn get_shell_integration_settings(app: &AppHandle) -> Result<ShellIntegrationSettings, String> {
+    Ok(load_settings(app)?.shell_integration)
+}
+
+pub fn patch_shell_integration_settings(
+    app: &AppHandle,
+    patch: ShellIntegrationPatch,
+) -> Result<ShellIntegrationSettings, String> {
+    update_settings(app, |settings| {
+        if let Some(pwsh_profile_override) = patch.pwsh_profile_override.clone() {
+            settings.shell_integration.pwsh_profile_override = pwsh_profile_override;
+        }
+        if let Some(seen) = patch.onboarding_install_prompt_seen {
+            settings.shell_integration.onboarding_install_prompt_seen = seen;
+        }
+        Ok(settings.shell_integration.clone())
     })
 }
 
