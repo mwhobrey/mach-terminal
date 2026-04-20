@@ -6,6 +6,8 @@ fn request() -> AiExecuteRequest {
         session_id: "session-test".to_string(),
         prompt: "explain ls -la".to_string(),
         provider_id: None,
+        intent: None,
+        context: None,
     }
 }
 

@@ -8,7 +8,10 @@ import {
   providerRoutingPatch,
   providerRoutingSet,
   providerSetEnabled,
+  trimAiContextExcerpt,
   type AiContextEvent,
+  type AiExecuteIntent,
+  type AiPromptContextPayload,
   type ProviderRoutingSettings,
   type PtySessionInfo,
 } from "../core/terminal";
@@ -35,9 +38,29 @@ interface UseProviderAiStateParams {
   activeSession: PtySessionInfo | undefined;
   onRuntimeError: (message: string) => void;
   onHistoryActionStatus: (status: string) => void;
+  /** Optional cwd/shell/scrollback tail assembled by the host (e.g. App.tsx). */
+  buildAiPromptContext?: () => AiPromptContextPayload | undefined;
 }
 
-export function useProviderAiState({ activeSession, onRuntimeError, onHistoryActionStatus }: UseProviderAiStateParams) {
+function composeAiContext(
+  buildAiPromptContext: UseProviderAiStateParams["buildAiPromptContext"],
+  extras: Partial<AiPromptContextPayload> = {},
+): AiPromptContextPayload | undefined {
+  const base = buildAiPromptContext?.() ?? {};
+  const merged: AiPromptContextPayload = { ...base, ...extras };
+  merged.output_excerpt = trimAiContextExcerpt(merged.output_excerpt ?? undefined);
+  const hasContext = [merged.cwd, merged.shell, merged.git_branch, merged.command_text, merged.output_excerpt].some(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+  return hasContext ? merged : undefined;
+}
+
+export function useProviderAiState({
+  activeSession,
+  onRuntimeError,
+  onHistoryActionStatus,
+  buildAiPromptContext,
+}: UseProviderAiStateParams) {
   const [providers, setProviders] = useState<ProviderDescriptor[]>(PROVIDER_REGISTRY);
   const [routing, setRouting] = useState<ProviderRoutingSettings>({
     default_provider: "ollama",
@@ -184,6 +207,8 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         session_id: activeSession.id,
         prompt: aiPrompt,
         provider_id: routing.default_provider,
+        intent: "freeform" satisfies AiExecuteIntent,
+        context: composeAiContext(buildAiPromptContext),
       });
       if (latestAiRequestRef.current !== requestId) {
         return;
@@ -203,7 +228,7 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, aiPrompt, onRuntimeError, routing.default_provider]);
+  }, [activeSession, aiPrompt, buildAiPromptContext, onRuntimeError, routing.default_provider]);
 
   const explainCommand = useCallback(async (command: string) => {
     if (!activeSession) {
@@ -224,6 +249,8 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         session_id: activeSession.id,
         prompt,
         provider_id: routing.default_provider,
+        intent: "explain_command" satisfies AiExecuteIntent,
+        context: composeAiContext(buildAiPromptContext, { command_text: command }),
       });
       if (latestAiRequestRef.current !== requestId) {
         return;
@@ -244,7 +271,7 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
 
   const fixCommand = useCallback(async (command: string) => {
     if (!activeSession) {
@@ -265,6 +292,8 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         session_id: activeSession.id,
         prompt,
         provider_id: routing.default_provider,
+        intent: "fix_command" satisfies AiExecuteIntent,
+        context: composeAiContext(buildAiPromptContext, { command_text: command }),
       });
       if (latestAiRequestRef.current !== requestId) {
         return;
@@ -285,7 +314,7 @@ export function useProviderAiState({ activeSession, onRuntimeError, onHistoryAct
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
 
   return {
     providers,

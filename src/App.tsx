@@ -7,6 +7,7 @@ import { FirstRunSetup, ONBOARDING_STORAGE_KEY } from "./components/FirstRunSetu
 import { SplitWorkspace } from "./components/SplitWorkspace";
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { TabBar } from "./components/TabBar";
+import { AiInsightPanel } from "./components/AiInsightPanel";
 import { OpsRail, type OpsRailFilter } from "./components/OpsRail";
 import { APP_COMMANDS, DEV_PALETTE_COMMANDS, type AppCommandId } from "./core/commands";
 import {
@@ -57,6 +58,8 @@ import {
   runtimeCapabilities,
   workspaceLayoutGet,
   workspaceLayoutSet,
+  trimAiContextExcerpt,
+  type AiPromptContextPayload,
 } from "./core/terminal";
 import {
   closePane,
@@ -73,6 +76,7 @@ import {
   type WorkspaceSnapshot,
   type WorkspaceState,
 } from "./state/workspace";
+import { isExecutableProvider } from "./core/providerUiState";
 import { useProviderAiState } from "./hooks/useProviderAiState";
 import { isTauri } from "./core/tauriRuntime";
 import {
@@ -123,6 +127,7 @@ function App() {
   const [sessionBuffers, setSessionBuffers] = useState<Record<string, string>>({});
   const sessionBuffersRef = useRef(sessionBuffers);
   sessionBuffersRef.current = sessionBuffers;
+  const composerDraftRef = useRef("");
   const [runLedger, setRunLedger] = useState<RunLedgerState>({});
   const [opsRailCollapsed, setOpsRailCollapsed] = useState(() =>
     typeof window !== "undefined" ? window.localStorage.getItem(OPS_RAIL_COLLAPSED_KEY) === "1" : false,
@@ -154,6 +159,7 @@ function App() {
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [diagnosticsCopyStatus, setDiagnosticsCopyStatus] = useState<string | null>(null);
   const [recoveryBanner, setRecoveryBanner] = useState<string | null>(null);
+  const [aiInsightDismissed, setAiInsightDismissed] = useState(false);
   const [terminalFontSize, setTerminalFontSize] = useState(13);
   const terminalUiSeqRef = useRef(0);
   const [terminalUiRequest, setTerminalUiRequest] = useState<TerminalUiRequest | null>(null);
@@ -178,6 +184,20 @@ function App() {
   }, [workspace]);
 
   const activeSession = activeSessionId ? sessionsById[activeSessionId] : undefined;
+
+  const buildAiPromptContext = useCallback((): AiPromptContextPayload | undefined => {
+    if (!activeSession) {
+      return undefined;
+    }
+    const cwd = sessionCwd[activeSession.id] ?? activeSession.cwd ?? undefined;
+    const rawBuffer = sessionBuffers[activeSession.id] ?? "";
+    const output_excerpt = trimAiContextExcerpt(rawBuffer);
+    return {
+      cwd,
+      shell: activeSession.shell ?? undefined,
+      output_excerpt,
+    };
+  }, [activeSession, sessionBuffers, sessionCwd]);
 
   const filteredRunsForOps = useMemo(() => {
     const list = activeSessionId ? (runLedger[activeSessionId] ?? []) : [];
@@ -296,7 +316,18 @@ function App() {
     activeSession,
     onRuntimeError: (message) => setRuntimeError(message),
     onHistoryActionStatus: (status) => setHistoryActionStatus(status),
+    buildAiPromptContext,
   });
+
+  useEffect(() => {
+    setAiInsightDismissed(false);
+  }, [aiResponse]);
+
+  useEffect(() => {
+    if (aiRequestInFlight) {
+      setAiInsightDismissed(false);
+    }
+  }, [aiRequestInFlight]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -528,6 +559,24 @@ function App() {
 
       cwdUnlisten = await onPtyCwdChanged((event) => {
         setSessionCwd((current) => applyCwdChange(current, event));
+        const cwd = event.cwd;
+        if (!cwd) {
+          return;
+        }
+        setSessions((current) => {
+          let changed = false;
+          const next = current.map((session) => {
+            if (session.id !== event.session_id) {
+              return session;
+            }
+            if (session.cwd === cwd) {
+              return session;
+            }
+            changed = true;
+            return { ...session, cwd };
+          });
+          return changed ? next : current;
+        });
       });
 
       contextUnlisten = await onAiContext((event) => {
@@ -917,6 +966,20 @@ function App() {
             await explainCommand(historyEntries[0].command);
           }
           break;
+        case "ai.explainComposerDraft": {
+          const draft = composerDraftRef.current.trim();
+          if (draft) {
+            await explainCommand(draft);
+          }
+          break;
+        }
+        case "ai.fixComposerDraft": {
+          const draft = composerDraftRef.current.trim();
+          if (draft) {
+            await fixCommand(draft);
+          }
+          break;
+        }
         case "dev.diagnostics":
           setDiagnosticsOpen(true);
           break;
@@ -945,6 +1008,7 @@ function App() {
       createSession,
       dispatchTerminalUiRequest,
       explainCommand,
+      fixCommand,
       filteredRunsForOps,
       handleJumpRun,
       historyEntries,
@@ -996,6 +1060,26 @@ function App() {
     [commandPaletteItems],
   );
 
+  const aiAssistEnabled = useMemo(
+    () => routing.ai_feature_enabled && isExecutableProvider(routing.default_provider),
+    [routing.ai_feature_enabled, routing.default_provider],
+  );
+
+  const aiInsightSlot = useMemo(() => {
+    if (aiInsightDismissed || (!aiResponse && !aiRequestInFlight)) {
+      return null;
+    }
+    return (
+      <AiInsightPanel
+        text={aiResponse}
+        inFlight={aiRequestInFlight}
+        statusLine={aiRequestStatus}
+        onDismiss={() => setAiInsightDismissed(true)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
+      />
+    );
+  }, [aiInsightDismissed, aiRequestInFlight, aiRequestStatus, aiResponse]);
+
   return (
     <div className="app-frame">
       <CustomTitleBar
@@ -1038,6 +1122,25 @@ function App() {
             sessionCwd={sessionCwd}
             terminalFontSize={terminalFontSize}
             terminalUiRequest={terminalUiRequest}
+            aiInsightSlot={aiInsightSlot}
+            aiAssistEnabled={aiAssistEnabled}
+            onComposerDraftChange={(paneId, draft) => {
+              if (paneId === workspace.activePaneId) {
+                composerDraftRef.current = draft;
+              }
+            }}
+            onAiExplainComposer={() => {
+              const draft = composerDraftRef.current.trim();
+              if (draft) {
+                void explainCommand(draft);
+              }
+            }}
+            onAiFixComposer={() => {
+              const draft = composerDraftRef.current.trim();
+              if (draft) {
+                void fixCommand(draft);
+              }
+            }}
             onInput={(sessionId, data) => void handleInput(sessionId, data)}
             onResize={(sessionId, cols, rows) => void handleResize(sessionId, cols, rows)}
             onFocusPane={(paneId) => setWorkspace((current) => setActivePane(current, paneId))}
@@ -1074,6 +1177,10 @@ function App() {
             onSelectRun={setOpsSelectedRunId}
             onTogglePin={handleOpsTogglePin}
             onJump={handleJumpRun}
+            aiAssistEnabled={aiAssistEnabled}
+            aiBusy={aiRequestInFlight}
+            onExplainEntry={(command) => void explainCommand(command)}
+            onFixEntry={(command) => void fixCommand(command)}
           />
           </div>
         </section>

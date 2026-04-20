@@ -11,6 +11,8 @@ export type AppCommandId =
   | "palette.toggle"
   | "history.refresh"
   | "ai.explainSelection"
+  | "ai.explainComposerDraft"
+  | "ai.fixComposerDraft"
   | "terminal.openFind"
   | "terminal.scrollBottom"
   | "terminal.findNext"
@@ -83,6 +85,16 @@ export const APP_COMMANDS: AppCommand[] = [
     label: "AI explain last command",
     shortcut: "Ctrl/Cmd+Shift+E",
     description: "Run AI explain against the latest history entry.",
+  },
+  {
+    id: "ai.explainComposerDraft",
+    label: "AI explain composer draft",
+    description: "Run AI explain against the current shell composer text (active pane).",
+  },
+  {
+    id: "ai.fixComposerDraft",
+    label: "AI suggest safer composer draft",
+    description: "Ask AI for a safer or corrected command from the composer draft (active pane).",
   },
   {
     id: "terminal.openFind",

@@ -136,6 +136,52 @@ fn normalize_ollama_base_url(provider: &ProviderSettings) -> Result<Url, AiExecu
     Ok(parsed)
 }
 
+/// Hard cap on scrollback excerpt characters appended to prompts (aligned with frontend).
+const MAX_CONTEXT_EXCERPT_CHARS: usize = 6000;
+
+/// Keep the **trailing** `max_chars` characters (matches frontend scrollback tail policy).
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let count = value.chars().count();
+    if count <= max_chars {
+        return value.to_string();
+    }
+    let skip = count - max_chars;
+    value.chars().skip(skip).collect()
+}
+
+/// Compose a single prompt string for adapters (provider-specific templates can branch on `intent` later).
+pub(crate) fn assemble_prompt(request: &AiExecuteRequest) -> String {
+    let mut sections: Vec<String> = Vec::new();
+    if let Some(ctx) = &request.context {
+        let mut lines: Vec<String> = Vec::new();
+        if let Some(cwd) = ctx.cwd.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("cwd: {cwd}"));
+        }
+        if let Some(shell) = ctx.shell.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("shell: {shell}"));
+        }
+        if let Some(branch) = ctx.git_branch.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("git_branch: {branch}"));
+        }
+        if let Some(cmd) = ctx.command_text.as_ref().filter(|value| !value.trim().is_empty()) {
+            lines.push(format!("command_text:\n{cmd}"));
+        }
+        if let Some(excerpt) = ctx.output_excerpt.as_ref().filter(|value| !value.trim().is_empty()) {
+            let clipped = truncate_chars(excerpt, MAX_CONTEXT_EXCERPT_CHARS);
+            lines.push(format!("recent_terminal_output_tail:\n{clipped}"));
+        }
+        if !lines.is_empty() {
+            sections.push(format!("Session context:\n{}", lines.join("\n")));
+        }
+    }
+    let mut out = sections.join("\n\n");
+    if !out.is_empty() {
+        out.push_str("\n\n---\n\n");
+    }
+    out.push_str(request.prompt.trim());
+    out
+}
+
 #[instrument(skip(client, provider, routing, prompt))]
 async fn run_ollama(
     client: &Client,
@@ -194,9 +240,15 @@ pub async fn execute_ai_request(
         return Err(AiExecutionError::ProviderDisabled(provider.id.clone()).to_string());
     }
 
-    info!(provider_id = provider.id, "executing ai request");
+    info!(
+        provider_id = provider.id,
+        intent = ?request.intent,
+        has_context = request.context.is_some(),
+        "executing ai request"
+    );
+    let prompt = assemble_prompt(request);
     let output = match provider.id.as_str() {
-        "ollama" => run_ollama(client, &provider, &settings.provider_routing, &request.prompt).await?,
+        "ollama" => run_ollama(client, &provider, &settings.provider_routing, &prompt).await?,
         _ => {
             warn!(provider_id = provider.id, "provider configured without execution adapter");
             return Err(AiExecutionError::ProviderAdapterMissing(provider.id).to_string());
@@ -207,6 +259,40 @@ pub async fn execute_ai_request(
         provider_id: provider.id,
         output,
     })
+}
+
+#[cfg(test)]
+mod assemble_tests {
+    use crate::models::{AiExecuteRequest, AiPromptContext};
+    use crate::provider_host::assemble_prompt;
+
+    #[test]
+    fn prepends_bounded_session_context_sections() {
+        let excerpt = format!("{}{}", "x".repeat(7000), "tail-marker");
+        let request = AiExecuteRequest {
+            session_id: "sid".into(),
+            prompt: "Explain the error.".into(),
+            provider_id: None,
+            intent: Some("explain_command".into()),
+            context: Some(AiPromptContext {
+                cwd: Some("/tmp/project".into()),
+                shell: Some("/bin/bash".into()),
+                git_branch: Some("main".into()),
+                command_text: Some("cargo build".into()),
+                output_excerpt: Some(excerpt),
+            }),
+        };
+        let built = assemble_prompt(&request);
+        assert!(built.contains("cwd: /tmp/project"));
+        assert!(built.contains("shell: /bin/bash"));
+        assert!(built.contains("git_branch: main"));
+        assert!(built.contains("command_text:\ncargo build"));
+        assert!(built.ends_with("Explain the error."));
+        assert!(
+            built.contains("tail-marker"),
+            "tail of long excerpt should be preserved after clipping"
+        );
+    }
 }
 
 pub fn default_runtime_client() -> Result<Client, String> {

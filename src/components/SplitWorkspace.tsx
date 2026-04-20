@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { TerminalSurface } from "./TerminalSurface";
 import type { SessionCwdMap } from "../core/sessionCwd";
 import type { SessionExitedInfo } from "../core/sessionLifecycle";
@@ -15,6 +16,11 @@ interface SplitWorkspaceProps {
   sessionCwd: SessionCwdMap;
   terminalFontSize?: number;
   terminalUiRequest?: TerminalUiRequest | null;
+  aiInsightSlot?: ReactNode | null;
+  aiAssistEnabled?: boolean;
+  onComposerDraftChange?: (paneId: string, draft: string) => void;
+  onAiExplainComposer?: () => void;
+  onAiFixComposer?: () => void;
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
   onFocusPane: (paneId: string) => void;
@@ -32,6 +38,11 @@ export function SplitWorkspace({
   sessionCwd,
   terminalFontSize,
   terminalUiRequest,
+  aiInsightSlot = null,
+  aiAssistEnabled = false,
+  onComposerDraftChange,
+  onAiExplainComposer,
+  onAiFixComposer,
   onInput,
   onResize,
   onFocusPane,
@@ -53,7 +64,8 @@ export function SplitWorkspace({
         const status = session ? sessionStatuses[session.id] ?? session.status : "idle";
         const message = session ? sessionMessages[session.id] : undefined;
         const exitedInfo = session ? sessionExited[session.id] ?? null : null;
-        const liveCwd = session ? sessionCwd[session.id] ?? null : null;
+        // Prefer OSC 7 map; fall back to backend session cwd (spawn seed + updates) when the hook is absent.
+        const liveCwd = session ? sessionCwd[session.id] ?? session.cwd ?? null : null;
         return (
           <div
             key={pane.id}
@@ -70,6 +82,13 @@ export function SplitWorkspace({
               isFocused={workspace.activePaneId === pane.id}
               terminalFontSize={terminalFontSize}
               terminalUiRequest={terminalUiRequest}
+              aiInsightSlot={workspace.activePaneId === pane.id ? aiInsightSlot : null}
+              aiAssistEnabled={aiAssistEnabled}
+              onComposerDraftChange={
+                onComposerDraftChange ? (draft) => onComposerDraftChange(pane.id, draft) : undefined
+              }
+              onAiExplainComposer={onAiExplainComposer}
+              onAiFixComposer={onAiFixComposer}
               onInput={onInput}
               onResize={onResize}
               onRequestRestartSession={() => onRequestRestartSession(pane.id)}

@@ -13,12 +13,14 @@ import type {
   SessionStatus,
 } from "../core/terminal";
 import { HistoryPanel } from "./HistoryPanel";
+import { ShellIntegrationSection } from "./ShellIntegrationSection";
 import { StatusStripSettingsSection } from "./StatusStripSettingsSection";
 
 const SETTINGS_SECTIONS: { id: string; label: string }[] = [
   { id: "settings-section-runtime", label: "Runtime" },
   { id: "settings-section-providers", label: "Providers" },
   { id: "settings-section-status-strip", label: "Status strip" },
+  { id: "settings-section-shell-integration", label: "Shell integration" },
   { id: "settings-section-session", label: "Session & layout" },
   { id: "settings-section-updater", label: "Updater" },
   { id: "settings-section-ai", label: "AI router" },
@@ -299,6 +301,8 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
             </section>
 
             <StatusStripSettingsSection modalOpen={props.open} sectionId="settings-section-status-strip" />
+
+            <ShellIntegrationSection modalOpen={props.open} />
 
             <section id="settings-section-session">
               <h2>Session &amp; layout</h2>

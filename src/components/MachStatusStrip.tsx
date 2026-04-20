@@ -3,7 +3,8 @@ import {
   loadStatusStripSettings,
   type StatusStripSettings,
 } from "../core/statusStripSettings";
-import { shellChipLabel, StatusGlyphs } from "../core/statusStripGlyphs";
+import { shellChipLabel } from "../core/statusStripGlyphs";
+import { StatusStripGlyph } from "./StatusStripGlyph";
 import { isTauri } from "../core/tauriRuntime";
 import {
   runtimeMetricsSnapshot,
@@ -118,57 +119,43 @@ export function MachStatusStrip({ liveCwd, shellExe }: MachStatusStripProps) {
       <div className="mach-status-strip-segments">
         {settings.showShell && shellLabel ? (
           <span className="mach-status-chip mach-status-chip-muted" title={shellExe ?? undefined}>
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.terminal}
-            </span>
+            <StatusStripGlyph kind="terminal" />
             {shellLabel}
           </span>
         ) : null}
         {settings.showPath && pathLabel ? (
           <span className="mach-status-chip" title={liveCwd ?? undefined}>
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.folder}
-            </span>
+            <StatusStripGlyph kind="folder" />
             {pathLabel}
           </span>
         ) : null}
         {settings.showClock ? (
           <span className="mach-status-chip mach-status-chip-muted">
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.clock}
-            </span>
+            <StatusStripGlyph kind="clock" />
             {clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </span>
         ) : null}
         {settings.showGit && shellCtx?.gitBranch ? (
           <span className="mach-status-chip mach-status-chip-accent">
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.gitBranch}
-            </span>
+            <StatusStripGlyph kind="gitBranch" />
             {shellCtx.gitBranch}
           </span>
         ) : null}
         {settings.showGitDiffStats && shellCtx?.gitShortStat ? (
           <span className="mach-status-chip mach-status-chip-git-diff" title="git diff HEAD --shortstat (compact)">
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.gitWorkingTree}
-            </span>
+            <StatusStripGlyph kind="gitWorkingTree" />
             {shellCtx.gitShortStat}
           </span>
         ) : null}
         {settings.showElevated && shellCtx?.elevated ? (
           <span className="mach-status-chip mach-status-chip-warn" title="Elevated session">
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.shieldAdmin}
-            </span>
+            <StatusStripGlyph kind="shieldAdmin" />
             admin
           </span>
         ) : null}
         {settings.showMetrics && metrics ? (
           <span className="mach-status-chip mach-status-chip-muted" title="PTY host counters">
-            <span className="mach-status-glyph" aria-hidden="true">
-              {StatusGlyphs.metrics}
-            </span>
+            <StatusStripGlyph kind="metrics" />
             out {metrics.output_chunks_emitted} · drop {metrics.output_chunks_dropped}
           </span>
         ) : null}

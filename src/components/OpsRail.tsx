@@ -15,6 +15,10 @@ interface OpsRailProps {
   onSelectRun: (runId: string | null) => void;
   onTogglePin: (runId: string) => void;
   onJump: (run: RunRecord) => void;
+  aiAssistEnabled?: boolean;
+  aiBusy?: boolean;
+  onExplainEntry?: (command: string) => void;
+  onFixEntry?: (command: string) => void;
 }
 
 export function OpsRail({
@@ -28,6 +32,10 @@ export function OpsRail({
   onSelectRun,
   onTogglePin,
   onJump,
+  aiAssistEnabled = false,
+  aiBusy = false,
+  onExplainEntry,
+  onFixEntry,
 }: OpsRailProps) {
   const copyCommand = useCallback(
     (text: string) => {
@@ -153,6 +161,36 @@ export function OpsRail({
                   Jump
                 </button>
               </div>
+              {aiAssistEnabled && (onExplainEntry || onFixEntry) ? (
+                <div className="ops-rail-ai-actions">
+                  {onExplainEntry ? (
+                    <button
+                      type="button"
+                      className="inline-btn ghost ops-rail-action-btn"
+                      disabled={aiBusy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExplainEntry(run.commandText);
+                      }}
+                    >
+                      Explain
+                    </button>
+                  ) : null}
+                  {onFixEntry ? (
+                    <button
+                      type="button"
+                      className="inline-btn ghost ops-rail-action-btn"
+                      disabled={aiBusy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFixEntry(run.commandText);
+                      }}
+                    >
+                      Safer
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ))
         )}

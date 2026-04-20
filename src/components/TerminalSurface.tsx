@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -60,10 +61,9 @@ interface TerminalSurfaceProps {
   /** When set, the session this pane is wired to has exited and the overlay should render. */
   exitedInfo?: SessionExitedInfo | null;
   /**
-   * Last-known absolute cwd for the session, sourced from `pty-cwd-changed`. The
-   * overlay surfaces this below the exit detail so the user knows *where*
-   * restart will land. `null` when the shell never emitted OSC 7 (no hook
-   * installed) in which case the overlay skips the subline entirely.
+   * Last-known absolute cwd: `pty-cwd-changed` (OSC 7) when present, else the
+   * backend session cwd (spawn seed + updates). Overlay uses this for restart
+   * location; `null` only when both are missing.
    */
   liveCwd?: string | null;
   isFocused: boolean;
@@ -71,6 +71,11 @@ interface TerminalSurfaceProps {
   terminalFontSize?: number;
   /** Palette-driven UI intents; only the focused pane consumes a new `seq`. */
   terminalUiRequest?: TerminalUiRequest | null;
+  aiInsightSlot?: ReactNode | null;
+  aiAssistEnabled?: boolean;
+  onComposerDraftChange?: (draft: string) => void;
+  onAiExplainComposer?: () => void;
+  onAiFixComposer?: () => void;
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
   onRequestRestartSession?: () => void;
@@ -87,6 +92,11 @@ export function TerminalSurface({
   isFocused,
   terminalFontSize = DEFAULT_TERMINAL_FONT_SIZE,
   terminalUiRequest = null,
+  aiInsightSlot = null,
+  aiAssistEnabled = false,
+  onComposerDraftChange,
+  onAiExplainComposer,
+  onAiFixComposer,
   onInput,
   onResize,
   onRequestRestartSession,
@@ -863,6 +873,10 @@ export function TerminalSurface({
     }
   }, [exitedInfo]);
 
+  useEffect(() => {
+    onComposerDraftChange?.(composerDraft);
+  }, [composerDraft, onComposerDraftChange]);
+
   return (
     <section ref={terminalPanelRef} className={`terminal-panel ${isFocused ? "focused" : ""}`}>
       {sessionMessage ? <p className="terminal-message">{sessionMessage}</p> : null}
@@ -1061,6 +1075,7 @@ export function TerminalSurface({
             </div>
           </div>
           <div className="terminal-input-chrome">
+            {aiInsightSlot}
             <MachStatusStrip liveCwd={liveCwd} shellExe={activeSession?.shell ?? null} />
             <div className="terminal-composer" onContextMenu={(event) => event.stopPropagation()}>
               <div className="terminal-composer-input-row">
@@ -1092,6 +1107,30 @@ export function TerminalSurface({
                   aria-label="Shell command input"
                 />
               </div>
+              {aiAssistEnabled && isFocused && (onAiExplainComposer || onAiFixComposer) ? (
+                <div className="terminal-composer-ai-row">
+                  {onAiExplainComposer ? (
+                    <button
+                      type="button"
+                      className="inline-btn ghost"
+                      disabled={composerLocked || !composerDraft.trim()}
+                      onClick={() => onAiExplainComposer()}
+                    >
+                      Explain
+                    </button>
+                  ) : null}
+                  {onAiFixComposer ? (
+                    <button
+                      type="button"
+                      className="inline-btn ghost"
+                      disabled={composerLocked || !composerDraft.trim()}
+                      onClick={() => onAiFixComposer()}
+                    >
+                      Safer
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <p className="terminal-composer-footer-hint">Enter to send · Shift+Enter newline</p>
             </div>
           </div>
