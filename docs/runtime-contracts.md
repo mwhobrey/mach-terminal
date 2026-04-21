@@ -192,23 +192,10 @@ This document defines the first stable contract between the frontend shell and R
   - `profilePath`, `backupCount`, `profilePathSource`, and `error` remain explicitly serialized (including null when absent)
   - canonical row ordering remains `pwsh`, `bash`, `zsh`
   - capability invariants remain stable per shell kind
-- Invoke-transport smoke coverage is now scaffolded as non-blocking:
-  - Rust integration spec: `src-tauri/tests/shell_integration_invoke_smoke.rs`
-  - scripts:
-    - `npm run test:invoke:smoke` (non-blocking signal path)
-    - `npm run test:invoke:strict` (opt-in strict promotion path)
-  - cargo feature gate: `invoke-smoke` enables `tauri/test` and keeps baseline `cargo test` unaffected
-  - tests are intentionally `#[ignore]` by default and executed only via explicit opt-in (`--ignored`)
-  - current transport assertions cover:
-    - top-level payload shape (`scriptVersion`, `shellDir`, `shells`)
-    - canonical row order (`pwsh`, `bash`, `zsh`)
-    - per-shell capability invariants
-    - pwsh error/null/source semantics for invalid override + unresolved auto scenarios
-  - known caveat: some Windows environments can fail with `STATUS_ENTRYPOINT_NOT_FOUND` before assertions execute
-  - promotion criteria to blocking gates:
-    - strict invoke path passes reliably on target OS matrix
-    - no crash-level runtime failures (including entrypoint failures)
-    - invoke assertions stay in parity with backend serialization guard tests
+- Invoke / shell-status contract coverage (`npm run test:invoke:smoke` / `test:invoke:strict`):
+  - **Unix:** `src-tauri/tests/shell_integration_invoke_smoke.rs` (feature `invoke-smoke`) calls `shell_integration_status` on a `MockRuntime` handle and asserts the JSON wire shape (same assertions as the historical IPC harness, without `get_ipc_response`).
+  - **Windows:** `tauri/test` linked into the integration-test or lib-test binary can crash with `STATUS_ENTRYPOINT_NOT_FOUND`; the Node runner therefore executes a filtered **in-crate** lib test (`shell_integration::tests::shell_integration_status_serialization_preserves_top_level_and_cross_shell_contract`) for strict mode so CI and `stability:signoff` stay green while still exercising serialization invariants.
+  - `invoke-smoke` remains an empty feature flag used only to gate the Unix integration test target (`required-features` on `[[test]]`).
 - The P5/P5-followup refactors do not change shell integration payload shapes; they reduce repeated backend branching only.
 
 ## Cross-Platform PTY Behavior

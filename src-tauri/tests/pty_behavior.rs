@@ -1,3 +1,4 @@
+use mach_terminal_lib::osc133::{Osc133Kind, Osc133Parser};
 use mach_terminal_lib::osc7::Osc7Parser;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Read;
@@ -285,4 +286,97 @@ fn pty_emits_osc7_to_parser() {
         Some(expected_cwd.as_str()),
         "expected Osc7Parser to surface the shell-emitted cwd",
     );
+}
+
+/// OSC 133 marker passes through the PTY byte stream and `Osc133Parser` surfaces it.
+/// Same shape as the reader-thread tap in `session_manager::spawn_session` (without Tauri emits).
+#[test]
+fn pty_emits_osc133_d_marker_to_parser() {
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system
+        .openpty(PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .expect("failed to create pty");
+
+    let command = if cfg!(target_os = "windows") {
+        let mut cmd = CommandBuilder::new("powershell.exe");
+        cmd.arg("-NoProfile");
+        cmd.arg("-NoLogo");
+        cmd.arg("-Command");
+        cmd.arg("[Console]::Out.Write([char]27 + ']133;D;42' + [char]7); exit 0");
+        cmd
+    } else {
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        cmd.arg("-c");
+        cmd.arg("printf '\\033]133;D;42\\007'; exit 0");
+        cmd
+    };
+
+    let child = pty_pair
+        .slave
+        .spawn_command(command)
+        .expect("failed to spawn shell");
+    drop(pty_pair.slave);
+
+    let child: Arc<Mutex<Box<dyn portable_pty::Child + Send>>> = Arc::new(Mutex::new(child));
+
+    let mut reader = pty_pair.master.try_clone_reader().expect("reader");
+    let child_drain = Arc::clone(&child);
+    let drainer = std::thread::spawn(move || -> Option<Osc133Kind> {
+        let mut parser = Osc133Parser::new();
+        let mut buf = [0_u8; 2048];
+        let start = Instant::now();
+        let mut found: Option<Osc133Kind> = None;
+        loop {
+            if start.elapsed() > Duration::from_secs(15) {
+                break;
+            }
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(bytes_read) => {
+                    for kind in parser.feed(&buf[..bytes_read]) {
+                        if matches!(kind, Osc133Kind::OutputEnd { .. }) {
+                            found = Some(kind);
+                        }
+                    }
+                    if found.is_some() {
+                        if let Ok(mut locked) = child_drain.lock() {
+                            if matches!(locked.try_wait(), Ok(Some(_))) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        found
+    });
+
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > Duration::from_secs(15) {
+            break;
+        }
+        let mut locked = child.lock().expect("child mutex should not be poisoned");
+        match locked.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                drop(locked);
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(_) => break,
+        }
+    }
+    drop(pty_pair.master);
+    let got = drainer.join().expect("drainer thread panicked");
+
+    match got {
+        Some(Osc133Kind::OutputEnd { exit_code }) => assert_eq!(exit_code, Some(42)),
+        other => panic!("expected Osc133 OutputEnd with exit 42, got {other:?}"),
+    }
 }

@@ -53,7 +53,7 @@ Current executable provider path is `ollama`; other providers remain visible as 
 
 Run this checklist before calling a UX slice complete:
 
-Scripted smoke coverage now runs for a focused subset of terminal interaction checks (`test:ux:smoke`): command-palette keyboard lifecycle, focused terminal-find intent/counter flow, link activation safety contracts, exited-session lifecycle contracts, pane-focus/follow-output command routing contracts (focused-only consume semantics + deterministic split/close fallback), history replay search/empty-state contracts, AI explain/fix history-action status contracts, composer completion/prediction/history acceptance contracts, plus BEL visual flash and context-menu/safe-paste contracts. Remaining checklist items below still require manual dogfood verification.
+Scripted smoke coverage now runs for a focused subset of terminal interaction checks (`test:ux:smoke`): command-palette keyboard lifecycle, focused terminal-find intent/counter flow, link activation safety contracts, exited-session lifecycle contracts, pane-focus/follow-output command routing contracts (focused-only consume semantics + deterministic split/close fallback, plus clear-viewport intent routing), history replay search/empty-state contracts, AI explain/fix history-action status contracts, composer completion/prediction/history acceptance contracts, plus BEL visual flash and context-menu/safe-paste contracts. Remaining checklist items below still require manual dogfood verification.
 
 1. Open command palette with `Ctrl/Cmd+K`, navigate with arrow keys, execute with Enter, dismiss with Escape.
 2. Split and resize panes rapidly; verify active-pane focus ring and stable terminal resize behavior.
@@ -141,6 +141,8 @@ After installing, open a fresh Mach session, `cd` somewhere, then `exit` — the
 ## Shell integration (OSC 133, optional)
 
 Mach can decode **OSC 133** command-boundary markers from the PTY byte stream (same family as iTerm2 / WezTerm). When your shell emits these escapes, the app raises `pty-command-marker` events and shows a short read-only hint on the status strip (latest marker / exit code when `D;<code>` is present). This is a strict enhancement: shells that never emit OSC 133 behave exactly as before.
+
+In the desktop app, open **Settings → Shell integration → Manual snippets (advanced)** for one-click copy of the same OSC 133 strings documented here.
 
 Copy-paste snippets (`MACH_SNIPPET_OSC133_*` in [`src/core/machShellSnippets.ts`](src/core/machShellSnippets.ts)) emit a minimal `A` (prompt-start) marker so you can verify wiring; fuller `B` / `C` / `D` coverage depends on deeper shell integration (preexec / `DEBUG` trap, etc.) beyond the baseline snippets.
 

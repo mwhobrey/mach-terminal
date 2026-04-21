@@ -22,7 +22,7 @@ execution path.
 - **Composer scroll:** `Ctrl+Alt+Page Up` / `Page Down` pages xterm output while the composer stays focused; pure helper in [`src/core/composerOutputScroll.ts`](../src/core/composerOutputScroll.ts) + smoke in [`src/core/composerInput.smoke.test.ts`](../src/core/composerInput.smoke.test.ts).
 - **Assist metrics profile flag:** `show_composer_assist_metrics` on [`TerminalProfile`](../src-tauri/src/models.rs) / [`profilePatch`](../src/core/terminal.ts) + Settings toggle; [`TerminalSurface.tsx`](../src/components/TerminalSurface.tsx) shows metrics when `import.meta.env.DEV` **or** the flag is set.
 - **OSC 133:** Incremental decoder [`src-tauri/src/osc133.rs`](../src-tauri/src/osc133.rs), PTY reader emits `pty-command-marker` (see [`docs/runtime-contracts.md`](runtime-contracts.md)); UI shows latest hint on [`MachStatusStrip.tsx`](../src/components/MachStatusStrip.tsx). Optional copy-paste snippets in [`src/core/machShellSnippets.ts`](../src/core/machShellSnippets.ts).
-- **Invoke / signoff:** [`scripts/stability-signoff.mjs`](../scripts/stability-signoff.mjs) runs strict invoke off Windows; expanded wire assertions in [`src-tauri/tests/shell_integration_invoke_smoke.rs`](../src-tauri/tests/shell_integration_invoke_smoke.rs).
+- **Invoke / signoff:** [`scripts/stability-signoff.mjs`](../scripts/stability-signoff.mjs) runs strict invoke on all platforms; [`scripts/invoke-smoke.mjs`](../scripts/invoke-smoke.mjs) uses Unix integration tests vs Windows lib-test fallback (see [`docs/runtime-contracts.md`](runtime-contracts.md)).
 
 ### Shell Integration P3 (Windows-first)
 
@@ -372,13 +372,12 @@ and are unrelated to app tests.
 
 ### 1) Shell Integration P5 follow-up (status-path consolidation)
 
-Goal: continue P5 by promoting invoke-level command tests for `shell_integration_status` from non-blocking smoke to stable blocking coverage once runtime entrypoint issues are resolved.
+Goal: keep invoke / shell-status contract coverage aligned with backend wire-shape as `shell_integration_status` evolves.
 
 Potential tasks:
 
-- clear Windows mock/webview `STATUS_ENTRYPOINT_NOT_FOUND` runtime failures so strict invoke can run on Windows the same way it already runs on Linux/macOS signoff
-- optional: add `test:invoke:strict` to the main **matrix** CI job (currently strict invoke is only in `stability:signoff` off Windows)
-- continue expanding invoke coverage to additional shell-status edge cases while preserving payload contract keys/casing
+- optional: broaden the **Windows** strict-invoke fallback beyond the current single serialization invariant (see `scripts/invoke-smoke.mjs`) once a stable pattern exists
+- continue expanding Unix integration assertions in `tests/shell_integration_invoke_smoke/body.rs` while preserving payload contract keys/casing
 
 ## Next Session Startup Checklist
 

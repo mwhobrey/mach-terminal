@@ -14,6 +14,9 @@ import {
 } from "../core/terminal";
 import { isTauri } from "../core/tauriRuntime";
 import {
+  MACH_SNIPPET_OSC133_BASH,
+  MACH_SNIPPET_OSC133_PWSH,
+  MACH_SNIPPET_OSC133_ZSH,
   MACH_SNIPPET_OSC7_BASH,
   MACH_SNIPPET_OSC7_PWSH,
   MACH_SNIPPET_OSC7_ZSH,
@@ -411,6 +414,45 @@ export function ShellIntegrationSection({ modalOpen, sectionId = "settings-secti
           </button>
         </div>
         <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC7_ZSH}</pre>
+
+        <h3 className="shell-integration-subheading">OSC 133 (optional)</h3>
+        <p className="muted-block">
+          Emit iTerm2-style command-boundary markers so the Mach status strip can show a short read-only hint when the
+          PTY stream includes OSC 133. This is independent of OSC 7; pair both if you want cwd + block hints.
+        </p>
+        <div className="minimal-prompt-snippet-row">
+          <span className="minimal-prompt-snippet-label">PowerShell</span>
+          <button
+            type="button"
+            className="inline-btn ghost"
+            onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC133_PWSH)}
+          >
+            Copy
+          </button>
+        </div>
+        <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC133_PWSH}</pre>
+        <div className="minimal-prompt-snippet-row">
+          <span className="minimal-prompt-snippet-label">Bash</span>
+          <button
+            type="button"
+            className="inline-btn ghost"
+            onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC133_BASH)}
+          >
+            Copy
+          </button>
+        </div>
+        <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC133_BASH}</pre>
+        <div className="minimal-prompt-snippet-row">
+          <span className="minimal-prompt-snippet-label">zsh</span>
+          <button
+            type="button"
+            className="inline-btn ghost"
+            onClick={() => void navigator.clipboard.writeText(MACH_SNIPPET_OSC133_ZSH)}
+          >
+            Copy
+          </button>
+        </div>
+        <pre className="minimal-prompt-snippet">{MACH_SNIPPET_OSC133_ZSH}</pre>
       </details>
     </section>
   );

@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
-invoke-smoke = ["tauri/test"]
+invoke-smoke = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -41,4 +41,14 @@ keyring = "3"
 
 [dev-dependencies]
 tempfile = "3"
+
+# `tauri/test` (MockRuntime) is only for integration tests on non-Windows. Enabling it on the
+# library crate breaks the lib test binary with STATUS_ENTRYPOINT_NOT_FOUND on Windows.
+[target.'cfg(not(target_os = "windows"))'.dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
+[[test]]
+name = "shell_integration_invoke_smoke"
+path = "tests/shell_integration_invoke_smoke.rs"
+required-features = ["invoke-smoke"]
 

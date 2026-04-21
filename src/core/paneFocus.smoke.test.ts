@@ -37,6 +37,26 @@ describe("Pane focus and follow-output smoke contracts", () => {
     expect(paneAFocusedLater).toEqual({ nextConsumedSeq: 6 });
   });
 
+  it("maps clearViewport for focused pane without requiring find query state", () => {
+    const cleared = evaluateTerminalUiIntent({
+      request: { kind: "clearViewport", seq: 33 },
+      isFocused: true,
+      consumedSeq: 32,
+      findQuery: "",
+      followOutput: true,
+    });
+    expect(cleared).toEqual({ nextConsumedSeq: 33, action: { type: "clearViewport" } });
+
+    const unfocused = evaluateTerminalUiIntent({
+      request: { kind: "clearViewport", seq: 34 },
+      isFocused: false,
+      consumedSeq: 32,
+      findQuery: "",
+      followOutput: true,
+    });
+    expect(unfocused).toEqual({ nextConsumedSeq: 34 });
+  });
+
   it("keeps follow-output command contracts stable for palette actions", () => {
     expect(commandToTerminalUiIntent("terminal.scrollBottom")).toBe("scrollToBottom");
     expect(commandToTerminalUiIntent("terminal.toggleFollowOutput")).toBe("toggleFollowOutput");

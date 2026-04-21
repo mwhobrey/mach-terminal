@@ -2,20 +2,33 @@ import { spawnSync } from "node:child_process";
 
 const STRICT_FLAG = process.argv.includes("--strict");
 const modeLabel = STRICT_FLAG ? "strict" : "non-blocking";
-const cargoArgs = [
-  "test",
-  "--manifest-path",
-  "src-tauri/Cargo.toml",
-  "--features",
-  "invoke-smoke",
-  "--test",
-  "shell_integration_invoke_smoke",
-  "--",
-  "--ignored",
-];
+
+const isWin = process.platform === "win32";
+
+// Windows: `tauri/test` breaks the lib and integration test executables
+// (STATUS_ENTRYPOINT_NOT_FOUND). Run high-value shell-integration lib contract tests instead.
+// Unix: full MockRuntime + settings fixture integration tests.
+const cargoArgs = isWin
+  ? [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--lib",
+      "--",
+      "shell_integration::tests::shell_integration_status_serialization_preserves_top_level_and_cross_shell_contract",
+    ]
+  : [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--features",
+      "invoke-smoke",
+      "--test",
+      "shell_integration_invoke_smoke",
+    ];
 
 const commandLabel = `cargo ${cargoArgs.join(" ")}`;
-console.log(`[invoke-smoke] Running ${modeLabel} invoke transport smoke...`);
+console.log(`[invoke-smoke] Running ${modeLabel} invoke transport smoke (${isWin ? "Windows lib fallback" : "Unix integration"})...`);
 console.log(`[invoke-smoke] > ${commandLabel}`);
 
 const result = spawnSync("cargo", cargoArgs, { encoding: "utf8" });
@@ -39,18 +52,15 @@ if (!failed) {
 
 console.warn(
   `[invoke-smoke] Failed with status=${String(result.status ?? "null")} signal=${String(
-    result.signal ?? "null"
-  )}.`
+    result.signal ?? "null",
+  )}.`,
 );
 if (result.error) {
   console.warn(`[invoke-smoke] Spawn error: ${result.error.message}`);
 }
 if (isKnownEntrypointFailure) {
   console.warn(
-    "[invoke-smoke] Detected known Windows runtime entrypoint failure (STATUS_ENTRYPOINT_NOT_FOUND)."
-  );
-  console.warn(
-    "[invoke-smoke] This indicates mock webview runtime incompatibility, not a shell status contract assertion mismatch."
+    "[invoke-smoke] Detected Windows runtime entrypoint failure (STATUS_ENTRYPOINT_NOT_FOUND).",
   );
 }
 

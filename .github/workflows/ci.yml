@@ -47,6 +47,9 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Shell integration invoke (strict)
+        run: npm run test:invoke:strict
+
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 

@@ -297,7 +297,13 @@ pub fn save_settings_to_path(path: &Path, settings: &AppSettings) -> Result<(), 
         match attempt_result {
             Ok(()) => return Ok(()),
             Err(error) => {
-                if attempt + 1 >= max_attempts || error.kind() != std::io::ErrorKind::PermissionDenied {
+                // Concurrent writers can race on `rename` (TOCTOU on `path.exists`, or Windows
+                // replace semantics). `NotFound` is treated as retryable like `PermissionDenied`.
+                let retryable = matches!(
+                    error.kind(),
+                    std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+                );
+                if attempt + 1 >= max_attempts || !retryable {
                     return Err(format!("failed to write settings atomically: {error}"));
                 }
                 thread::sleep(retry_delay);
