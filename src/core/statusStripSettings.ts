@@ -10,6 +10,8 @@ export type StatusStripSettings = {
   showMetrics: boolean;
   /** Working-tree diff summary vs HEAD (`git diff HEAD --shortstat`); runs only when toggled on. */
   showGitDiffStats: boolean;
+  /** Focused-pane terminal interaction state (find/follow-output). */
+  showInteractionState: boolean;
 };
 
 export const STATUS_STRIP_STORAGE_KEY = "mach-terminal.statusStrip.v1";
@@ -22,6 +24,7 @@ export const DEFAULT_STATUS_STRIP_SETTINGS: StatusStripSettings = {
   showElevated: true,
   showMetrics: false,
   showGitDiffStats: false,
+  showInteractionState: true,
 };
 
 export function loadStatusStripSettings(): StatusStripSettings {

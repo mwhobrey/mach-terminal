@@ -9,6 +9,7 @@ import type {
   SessionStatus,
 } from "../core/terminal";
 import type { TerminalUiRequest } from "../core/terminalUiRequest";
+import type { UiSurfaceState, UiSurfaceStatePatch } from "../core/uiSurfaceState";
 import type { WorkspaceState } from "../state/workspace";
 
 interface SplitWorkspaceProps {
@@ -23,6 +24,7 @@ interface SplitWorkspaceProps {
   terminalUiRequest?: TerminalUiRequest | null;
   showComposerAssistMetrics?: boolean;
   sessionOsc133Hints?: Record<string, string>;
+  sessionUiSurface?: Record<string, UiSurfaceState>;
   aiInsightSlot?: ReactNode | null;
   aiAssistEnabled?: boolean;
   onComposerDraftChange?: (paneId: string, draft: string) => void;
@@ -39,6 +41,7 @@ interface SplitWorkspaceProps {
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
   onFocusPane: (paneId: string) => void;
+  onUiSurfaceStateChange?: (sessionId: string, patch: UiSurfaceStatePatch) => void;
   onRequestRestartSession: (paneId: string) => void;
   onRequestCloseSession: (paneId: string) => void;
 }
@@ -55,6 +58,7 @@ export function SplitWorkspace({
   terminalUiRequest,
   showComposerAssistMetrics = false,
   sessionOsc133Hints = {},
+  sessionUiSurface = {},
   aiInsightSlot = null,
   aiAssistEnabled = false,
   onComposerDraftChange,
@@ -65,6 +69,7 @@ export function SplitWorkspace({
   onInput,
   onResize,
   onFocusPane,
+  onUiSurfaceStateChange,
   onRequestRestartSession,
   onRequestCloseSession,
 }: SplitWorkspaceProps) {
@@ -103,6 +108,7 @@ export function SplitWorkspace({
               terminalUiRequest={terminalUiRequest}
               showComposerAssistMetrics={showComposerAssistMetrics}
               osc133Hint={session ? sessionOsc133Hints[session.id] ?? null : null}
+              uiSurfaceState={session ? sessionUiSurface[session.id] : undefined}
               aiInsightSlot={workspace.activePaneId === pane.id ? aiInsightSlot : null}
               aiAssistEnabled={aiAssistEnabled}
               onComposerDraftChange={
@@ -114,6 +120,7 @@ export function SplitWorkspace({
               onRequestComposerCompletion={onRequestComposerCompletion}
               onInput={onInput}
               onResize={onResize}
+              onUiSurfaceStateChange={onUiSurfaceStateChange}
               onRequestRestartSession={() => onRequestRestartSession(pane.id)}
               onRequestCloseSession={() => onRequestCloseSession(pane.id)}
             />

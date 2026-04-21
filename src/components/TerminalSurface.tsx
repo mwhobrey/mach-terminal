@@ -22,6 +22,7 @@ import { summarizeExitedInfo } from "../core/sessionExitSummary";
 import { buildFindOptions, formatFindStatus } from "../core/terminalFindStatus";
 import { evaluateTerminalUiIntent } from "../core/terminalUiIntent";
 import type { TerminalUiRequest } from "../core/terminalUiRequest";
+import { DEFAULT_UI_SURFACE_STATE, type UiSurfaceState, type UiSurfaceStatePatch } from "../core/uiSurfaceState";
 import type { ComposerCompletionResponse, HistoryEntry, PtySessionInfo, SessionStatus } from "../core/terminal";
 import {
   applyCompletionCandidate,
@@ -133,6 +134,7 @@ interface TerminalSurfaceProps {
   terminalFontSize?: number;
   /** Palette-driven UI intents; only the focused pane consumes a new `seq`. */
   terminalUiRequest?: TerminalUiRequest | null;
+  uiSurfaceState?: UiSurfaceState;
   /** When true (or in dev), show composer completion assist metrics. */
   showComposerAssistMetrics?: boolean;
   /** Latest OSC 133 marker hint for this session (read-only status). */
@@ -152,6 +154,7 @@ interface TerminalSurfaceProps {
   }) => Promise<ComposerCompletionResponse>;
   onInput: (sessionId: string, data: string) => void;
   onResize: (sessionId: string, cols: number, rows: number) => void;
+  onUiSurfaceStateChange?: (sessionId: string, patch: UiSurfaceStatePatch) => void;
   onRequestRestartSession?: () => void;
   onRequestCloseSession?: () => void;
 }
@@ -166,6 +169,7 @@ export function TerminalSurface({
   isFocused,
   terminalFontSize = DEFAULT_TERMINAL_FONT_SIZE,
   terminalUiRequest = null,
+  uiSurfaceState = DEFAULT_UI_SURFACE_STATE,
   showComposerAssistMetrics = false,
   osc133Hint = null,
   aiInsightSlot = null,
@@ -177,6 +181,7 @@ export function TerminalSurface({
   onRequestComposerCompletion,
   onInput,
   onResize,
+  onUiSurfaceStateChange,
   onRequestRestartSession,
   onRequestCloseSession,
 }: TerminalSurfaceProps) {
@@ -206,7 +211,7 @@ export function TerminalSurface({
   const bellAnimTimerRef = useRef<number | null>(null);
   const consumedTerminalUiSeqRef = useRef(0);
   /** When true, new PTY output keeps the viewport pinned to the newest lines. */
-  const stickToBottomRef = useRef(true);
+  const stickToBottomRef = useRef(uiSurfaceState.followOutput);
   const findCaseSensitiveRef = useRef(false);
   const findWholeWordRef = useRef(false);
   const findRegexRef = useRef(false);
@@ -225,6 +230,7 @@ export function TerminalSurface({
 
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  const [followOutput, setFollowOutput] = useState(uiSurfaceState.followOutput);
   const [findCaseSensitive, setFindCaseSensitive] = useState(false);
   const [findWholeWord, setFindWholeWord] = useState(false);
   const [findRegex, setFindRegex] = useState(false);
@@ -266,6 +272,17 @@ export function TerminalSurface({
   findQueryRef.current = findQuery;
   setFindOpenRef.current = setFindOpen;
   completionStateRef.current = completionState;
+  stickToBottomRef.current = followOutput;
+
+  const emitUiSurfacePatch = useCallback(
+    (patch: UiSurfaceStatePatch) => {
+      if (!activeSession?.id) {
+        return;
+      }
+      onUiSurfaceStateChange?.(activeSession.id, patch);
+    },
+    [activeSession?.id, onUiSurfaceStateChange],
+  );
 
   const currentFindOptions = useCallback(
     (): ISearchOptions => ({
@@ -282,10 +299,11 @@ export function TerminalSurface({
   const closeFind = useCallback(() => {
     findOpenRef.current = false;
     setFindOpen(false);
+    emitUiSurfacePatch({ findOpen: false });
     searchAddonRef.current?.clearDecorations();
     findResultStateRef.current = { resultIndex: -1, resultCount: 0 };
     setFindResultState({ resultIndex: -1, resultCount: 0 });
-  }, []);
+  }, [emitUiSurfacePatch]);
 
   const runFindNext = useCallback(() => {
     const term = findQueryRef.current;
@@ -560,6 +578,14 @@ export function TerminalSurface({
   }, [onResize]);
 
   useEffect(() => {
+    setFollowOutput(uiSurfaceState.followOutput);
+    setFindOpen(uiSurfaceState.findOpen);
+    setFindQuery(uiSurfaceState.findQuery);
+    findOpenRef.current = uiSurfaceState.findOpen;
+    findQueryRef.current = uiSurfaceState.findQuery;
+  }, [activeSession?.id, uiSurfaceState.findOpen, uiSurfaceState.findQuery, uiSurfaceState.followOutput]);
+
+  useEffect(() => {
     if (!findOpen) {
       return;
     }
@@ -630,7 +656,7 @@ export function TerminalSurface({
       isFocused,
       consumedSeq: consumedTerminalUiSeqRef.current,
       findQuery: findQueryRef.current,
-      followOutput: stickToBottomRef.current,
+      followOutput,
     });
     consumedTerminalUiSeqRef.current = decision.nextConsumedSeq;
     if (!decision.action) {
@@ -642,11 +668,13 @@ export function TerminalSurface({
       case "openFind":
         findOpenRef.current = true;
         setFindOpen(true);
+        emitUiSurfacePatch({ findOpen: true });
         return;
       case "scrollToBottom":
         if (t) {
           t.scrollToBottom();
-          stickToBottomRef.current = true;
+          setFollowOutput(true);
+          emitUiSurfacePatch({ followOutput: true });
         }
         return;
       case "findNext":
@@ -660,7 +688,8 @@ export function TerminalSurface({
         t?.clear();
         return;
       case "setFollowOutput":
-        stickToBottomRef.current = decision.action.followOutput;
+        setFollowOutput(decision.action.followOutput);
+        emitUiSurfacePatch({ followOutput: decision.action.followOutput });
         if (decision.action.scrollToBottom && t) {
           t.scrollToBottom();
         }
@@ -674,8 +703,10 @@ export function TerminalSurface({
         findOpenRef.current = true;
         setFindOpen(true);
         setFindQuery(firstLine);
+        emitUiSurfacePatch({ findOpen: true, findQuery: firstLine });
         findQueryRef.current = firstLine;
-        stickToBottomRef.current = false;
+        setFollowOutput(false);
+        emitUiSurfacePatch({ followOutput: false });
         queueMicrotask(() => {
           searchAddonRef.current?.clearDecorations();
           runFindNext();
@@ -683,7 +714,7 @@ export function TerminalSurface({
         return;
       }
     }
-  }, [terminalUiRequest, isFocused, runFindNext, runFindPrevious]);
+  }, [terminalUiRequest, isFocused, followOutput, emitUiSurfacePatch, runFindNext, runFindPrevious]);
 
   useEffect(() => {
     if (!ctxMenu) {
@@ -775,10 +806,14 @@ export function TerminalSurface({
     fitAddon.fit();
     terminal.writeln("mach-terminal");
     terminal.writeln("ready.");
-    stickToBottomRef.current = isViewportAtBottom(terminal);
+    const atBottom = isViewportAtBottom(terminal);
+    setFollowOutput(atBottom);
+    emitUiSurfacePatch({ followOutput: atBottom });
 
     const onScrollDispose = terminal.onScroll(() => {
-      stickToBottomRef.current = isViewportAtBottom(terminal);
+      const nextFollowOutput = isViewportAtBottom(terminal);
+      setFollowOutput(nextFollowOutput);
+      emitUiSurfacePatch({ followOutput: nextFollowOutput });
     });
 
     const searchResultsDispose = searchAddon.onDidChangeResults((event) => {
@@ -880,6 +915,7 @@ export function TerminalSurface({
         }
         findOpenRef.current = true;
         setFindOpenRef.current(true);
+        emitUiSurfacePatch({ findOpen: true });
         return false;
       }
       if (findOpenRef.current) {
@@ -983,7 +1019,7 @@ export function TerminalSurface({
         window.clearTimeout(resizeTimerRef.current);
       }
     };
-  }, [requestClipboardPaste]);
+  }, [emitUiSurfacePatch, requestClipboardPaste]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1031,7 +1067,8 @@ export function TerminalSurface({
       terminal.writeln("No session selected.");
       terminal.writeln("Create a session or pick an existing tab.");
       terminal.scrollToBottom();
-      stickToBottomRef.current = true;
+      setFollowOutput(true);
+      emitUiSurfacePatch({ followOutput: true });
       renderedStateRef.current = { sessionId: undefined, length: 0 };
       return;
     }
@@ -1043,7 +1080,9 @@ export function TerminalSurface({
       if (pin) {
         terminal.scrollToBottom();
       }
-      stickToBottomRef.current = isViewportAtBottom(terminal);
+      const nextFollowOutput = isViewportAtBottom(terminal);
+      setFollowOutput(nextFollowOutput);
+      emitUiSurfacePatch({ followOutput: nextFollowOutput });
       renderedStateRef.current = { sessionId: currentSession, length: activeBuffer.length };
       pendingWriteRef.current = "";
       return;
@@ -1068,7 +1107,7 @@ export function TerminalSurface({
       }
       renderedStateRef.current = { sessionId: currentSession, length: activeBuffer.length };
     }
-  }, [activeSession, activeBuffer]);
+  }, [activeSession, activeBuffer, emitUiSurfacePatch]);
 
   useEffect(() => {
     if (exitedInfo) {
@@ -1128,6 +1167,7 @@ export function TerminalSurface({
               onChange={(e) => {
                 const v = e.target.value;
                 setFindQuery(v);
+                emitUiSurfacePatch({ findQuery: v });
                 findQueryRef.current = v;
               }}
               onKeyDown={(e) => {
@@ -1284,7 +1324,12 @@ export function TerminalSurface({
           </div>
           <div className="terminal-input-chrome">
             {aiInsightSlot}
-            <MachStatusStrip liveCwd={liveCwd} shellExe={activeSession?.shell ?? null} osc133Hint={osc133Hint} />
+            <MachStatusStrip
+              liveCwd={liveCwd}
+              shellExe={activeSession?.shell ?? null}
+              osc133Hint={osc133Hint}
+              uiSurfaceState={{ followOutput, findOpen, findQuery }}
+            />
             <div className="terminal-composer" onContextMenu={(event) => event.stopPropagation()}>
               <div className="terminal-composer-input-row">
                 <textarea
@@ -1306,7 +1351,9 @@ export function TerminalSurface({
                       if (t) {
                         const step = Math.max(1, t.rows - 1);
                         t.scrollLines(scrollIntent === "up" ? -step : step);
-                        stickToBottomRef.current = isViewportAtBottom(t);
+                        const nextFollowOutput = isViewportAtBottom(t);
+                        setFollowOutput(nextFollowOutput);
+                        emitUiSurfacePatch({ followOutput: nextFollowOutput });
                       }
                       return;
                     }
@@ -1538,6 +1585,7 @@ export function TerminalSurface({
               onClick={() => {
                 findOpenRef.current = true;
                 setFindOpen(true);
+                emitUiSurfacePatch({ findOpen: true });
                 setCtxMenu(null);
                 queueMicrotask(() => findInputRef.current?.focus());
               }}
@@ -1551,7 +1599,8 @@ export function TerminalSurface({
                 const t = terminalRef.current;
                 if (t) {
                   t.scrollToBottom();
-                  stickToBottomRef.current = true;
+                  setFollowOutput(true);
+                  emitUiSurfacePatch({ followOutput: true });
                 }
                 setCtxMenu(null);
               }}

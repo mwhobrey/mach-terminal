@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PLUGIN_REGISTRY } from "../core/plugins";
 import { aiOptInRequiredStatus, canRunAiRequest, isExecutableProvider, providerOptionSuffix } from "../core/providerUiState";
+import { uiSurfaceFindLabel, uiSurfaceFollowLabel, type UiSurfaceState } from "../core/uiSurfaceState";
 import type { ProviderDescriptor } from "../core/providers";
 import type { RuntimeCapabilities } from "../core/runtime";
 import type {
@@ -67,6 +68,11 @@ export type AppSettingsModalProps = {
   splitPaneRow: () => void;
   closeActivePane: () => void;
   onOpenCommandPalette: () => void;
+  onToggleFollowOutput: () => void | Promise<void>;
+  onOpenTerminalFind: () => void | Promise<void>;
+  onFindNextMatch: () => void | Promise<void>;
+  onFindPreviousMatch: () => void | Promise<void>;
+  uiSurfaceState: UiSurfaceState | null;
   workspaceSplitDirection: string;
   checkForUpdates: () => void | Promise<void>;
   updateStatus: string;
@@ -183,6 +189,11 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
     splitPaneRow,
     closeActivePane,
     onOpenCommandPalette,
+    onToggleFollowOutput,
+    onOpenTerminalFind,
+    onFindNextMatch,
+    onFindPreviousMatch,
+    uiSurfaceState,
     workspaceSplitDirection,
     checkForUpdates,
     updateStatus,
@@ -482,6 +493,32 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                   </button>
                 </div>
                 <pre className="minimal-prompt-snippet">{MACH_MINIMAL_PROMPT_ZSH}</pre>
+              </div>
+              <h3 className="settings-subsection-title">Terminal interaction state</h3>
+              <p className="muted-block">
+                Palette commands and terminal surfaces share this state model. Use these controls to verify parity
+                across settings, strip hints, and focused terminal behavior.
+              </p>
+              {uiSurfaceState ? (
+                <p className="muted-block">
+                  {uiSurfaceFollowLabel(uiSurfaceState.followOutput)} · {uiSurfaceFindLabel(uiSurfaceState)}
+                </p>
+              ) : (
+                <p className="muted-block">No active session.</p>
+              )}
+              <div className="inline-controls">
+                <button type="button" className="inline-btn ghost" onClick={() => void onToggleFollowOutput()}>
+                  toggle follow output
+                </button>
+                <button type="button" className="inline-btn ghost" onClick={() => void onOpenTerminalFind()}>
+                  open find
+                </button>
+                <button type="button" className="inline-btn ghost" onClick={() => void onFindPreviousMatch()}>
+                  find previous
+                </button>
+                <button type="button" className="inline-btn ghost" onClick={() => void onFindNextMatch()}>
+                  find next
+                </button>
               </div>
             </section>
 

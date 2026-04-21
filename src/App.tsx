@@ -26,6 +26,13 @@ import {
 import { collectExitedSessionIds } from "./core/sessionTabStatus";
 import { commandToTerminalUiIntent } from "./core/terminalCommandRouting";
 import type { TerminalUiRequest } from "./core/terminalUiRequest";
+import {
+  DEFAULT_UI_SURFACE_STATE,
+  mergeUiSurfaceState,
+  reduceUiSurfaceStateForRequest,
+  type UiSurfaceState,
+  type UiSurfaceStatePatch,
+} from "./core/uiSurfaceState";
 import { DEFAULT_KEYMAP, formatShortcut, matchShortcut } from "./core/keymap";
 import { drainChunksUpToByteBudget, nextSequenceState, SEQUENCE_LARGE_JUMP } from "./core/ptyOutputCoalesce";
 import { DEFAULT_RUNTIME_CAPABILITIES, type RuntimeCapabilities } from "./core/runtime";
@@ -174,6 +181,7 @@ function App() {
   const [minimalShellPrompt, setMinimalShellPrompt] = useState(false);
   const [showComposerAssistMetrics, setShowComposerAssistMetrics] = useState(false);
   const [sessionOsc133Hints, setSessionOsc133Hints] = useState<Record<string, string>>({});
+  const [sessionUiSurface, setSessionUiSurface] = useState<Record<string, UiSurfaceState>>({});
   const terminalUiSeqRef = useRef(0);
   const [terminalUiRequest, setTerminalUiRequest] = useState<TerminalUiRequest | null>(null);
   const pendingOutputRef = useRef<Record<string, string[]>>({});
@@ -197,6 +205,7 @@ function App() {
   }, [workspace]);
 
   const activeSession = activeSessionId ? sessionsById[activeSessionId] : undefined;
+  const activeUiSurfaceState = activeSessionId ? sessionUiSurface[activeSessionId] ?? DEFAULT_UI_SURFACE_STATE : null;
 
   const buildAiPromptContext = useCallback((): AiPromptContextPayload | undefined => {
     if (!activeSession) {
@@ -661,6 +670,15 @@ function App() {
       }
       return next;
     });
+    setSessionUiSurface((current) => {
+      const next = { ...current };
+      for (const id of Object.keys(next)) {
+        if (!aliveIds.includes(id)) {
+          delete next[id];
+        }
+      }
+      return next;
+    });
   }, [sessions]);
 
   /**
@@ -722,6 +740,19 @@ function App() {
     });
     setSessionExited((current) => clearExitedInfo(current, sessionId));
     setSessionCwd((current) => clearCwd(current, sessionId));
+    setSessionUiSurface((current) => {
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+  }, []);
+
+  const updateSessionUiSurfaceState = useCallback((sessionId: string, patch: UiSurfaceStatePatch) => {
+    setSessionUiSurface((current) => {
+      const baseline = current[sessionId] ?? DEFAULT_UI_SURFACE_STATE;
+      const nextState = mergeUiSurfaceState(baseline, patch);
+      return { ...current, [sessionId]: nextState };
+    });
   }, []);
 
   const closeSession = useCallback(
@@ -1017,6 +1048,16 @@ function App() {
     async (commandId: AppCommandId) => {
       const terminalIntent = commandToTerminalUiIntent(commandId);
       if (terminalIntent) {
+        if (activeSessionId) {
+          setSessionUiSurface((current) => {
+            const baseline = current[activeSessionId] ?? DEFAULT_UI_SURFACE_STATE;
+            const nextState =
+              terminalIntent === "jumpSearch"
+                ? baseline
+                : reduceUiSurfaceStateForRequest(baseline, { kind: terminalIntent });
+            return { ...current, [activeSessionId]: nextState };
+          });
+        }
         dispatchTerminalUiRequest({ kind: terminalIntent });
         return;
       }
@@ -1090,6 +1131,7 @@ function App() {
       }
     },
     [
+      activeSessionId,
       closeActivePane,
       closeActiveSession,
       closeAllExited,
@@ -1228,6 +1270,7 @@ function App() {
             terminalUiRequest={terminalUiRequest}
             showComposerAssistMetrics={showComposerAssistMetrics}
             sessionOsc133Hints={sessionOsc133Hints}
+            sessionUiSurface={sessionUiSurface}
             aiInsightSlot={aiInsightSlot}
             aiAssistEnabled={aiAssistEnabled}
             onComposerDraftChange={(paneId, draft) => {
@@ -1252,6 +1295,7 @@ function App() {
             onInput={(sessionId, data) => void handleInput(sessionId, data)}
             onResize={(sessionId, cols, rows) => void handleResize(sessionId, cols, rows)}
             onFocusPane={(paneId) => setWorkspace((current) => setActivePane(current, paneId))}
+            onUiSurfaceStateChange={(sessionId, patch) => updateSessionUiSurfaceState(sessionId, patch)}
             onRequestRestartSession={(paneId) => {
               const pane = workspace.panes.find((candidate) => candidate.id === paneId);
               const sid = pane?.sessionId ?? null;
@@ -1322,6 +1366,11 @@ function App() {
           splitPaneRow={splitPaneRow}
           closeActivePane={closeActivePane}
           onOpenCommandPalette={() => setPaletteOpen(true)}
+          onToggleFollowOutput={() => void executeCommand("terminal.toggleFollowOutput")}
+          onOpenTerminalFind={() => void executeCommand("terminal.openFind")}
+          onFindNextMatch={() => void executeCommand("terminal.findNext")}
+          onFindPreviousMatch={() => void executeCommand("terminal.findPrevious")}
+          uiSurfaceState={activeUiSurfaceState}
           workspaceSplitDirection={workspace.splitDirection}
           checkForUpdates={checkForUpdates}
           updateStatus={updateStatus}

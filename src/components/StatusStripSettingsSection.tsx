@@ -93,6 +93,16 @@ export function StatusStripSettingsSection({
             Git diff summary vs HEAD (compact; polls with branch)
           </label>
         </li>
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.showInteractionState}
+              onChange={(e) => patch({ showInteractionState: e.target.checked })}
+            />
+            Focused pane interaction state (find/follow-output)
+          </label>
+        </li>
       </ul>
     </section>
   );

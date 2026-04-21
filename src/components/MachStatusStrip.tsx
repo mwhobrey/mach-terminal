@@ -4,6 +4,7 @@ import {
   type StatusStripSettings,
 } from "../core/statusStripSettings";
 import { shellChipLabel } from "../core/statusStripGlyphs";
+import { uiSurfaceFindLabel, uiSurfaceFollowLabel, type UiSurfaceState } from "../core/uiSurfaceState";
 import { StatusStripGlyph } from "./StatusStripGlyph";
 import { isTauri } from "../core/tauriRuntime";
 import {
@@ -25,9 +26,16 @@ interface MachStatusStripProps {
   shellExe?: string | null;
   /** Latest OSC 133 marker summary when the shell emits markers (read-only). */
   osc133Hint?: string | null;
+  /** Canonical terminal interaction state for this pane/session. */
+  uiSurfaceState?: UiSurfaceState | null;
 }
 
-export function MachStatusStrip({ liveCwd, shellExe, osc133Hint = null }: MachStatusStripProps) {
+export function MachStatusStrip({
+  liveCwd,
+  shellExe,
+  osc133Hint = null,
+  uiSurfaceState = null,
+}: MachStatusStripProps) {
   const [settings, setSettings] = useState<StatusStripSettings>(() => loadStatusStripSettings());
   const [shellCtx, setShellCtx] = useState<ShellContextSnapshot | null>(null);
   const [metrics, setMetrics] = useState<RuntimeMetricsSnapshot | null>(null);
@@ -159,6 +167,11 @@ export function MachStatusStrip({ liveCwd, shellExe, osc133Hint = null }: MachSt
           <span className="mach-status-chip mach-status-chip-muted" title="PTY host counters">
             <StatusStripGlyph kind="metrics" />
             out {metrics.output_chunks_emitted} · drop {metrics.output_chunks_dropped}
+          </span>
+        ) : null}
+        {settings.showInteractionState && uiSurfaceState ? (
+          <span className="mach-status-chip mach-status-chip-muted" title="Focused terminal interaction state">
+            {uiSurfaceFollowLabel(uiSurfaceState.followOutput)} · {uiSurfaceFindLabel(uiSurfaceState)}
           </span>
         ) : null}
         {osc133Hint ? (
