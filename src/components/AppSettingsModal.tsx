@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PLUGIN_REGISTRY } from "../core/plugins";
-import { canRunAiRequest, isExecutableProvider } from "../core/providerUiState";
+import { aiOptInRequiredStatus, canRunAiRequest, isExecutableProvider, providerOptionSuffix } from "../core/providerUiState";
 import type { ProviderDescriptor } from "../core/providers";
 import type { RuntimeCapabilities } from "../core/runtime";
 import type {
@@ -514,7 +514,7 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                   >
                     {providers.map((provider) => (
                       <option key={provider.id} value={provider.id} disabled={!isExecutableProvider(provider.id)}>
-                        {provider.name} ({provider.id}){!isExecutableProvider(provider.id) ? " - unavailable" : ""}
+                        {provider.name} ({provider.id}){providerOptionSuffix(isExecutableProvider(provider.id))}
                       </option>
                     ))}
                   </select>
@@ -573,7 +573,7 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                 </button>
                 {!routing.ai_feature_enabled ? (
                   <p className="muted-block">
-                    AI requests are blocked until you enable AI opt-in. Provider endpoints and routing can still be configured.
+                    {aiOptInRequiredStatus()} Provider endpoints and routing can still be configured.
                   </p>
                 ) : null}
                 {aiRequestStatus ? <p className="muted-block">{aiRequestStatus}</p> : null}

@@ -12,10 +12,20 @@ execution path.
 
 - Branch: `master`
 - Stack: Tauri v2 + Rust backend, React/TypeScript frontend, xterm.js renderer
-- Latest completed tranche: enhancement **tranche 5** — docs truth refresh (`README`/handoff/release docs), scripted compiler-style path-link smoke coverage, and release-readiness CI/checksum guidance; see git log for the tranche 5 commit.
+- Latest completed tranche: enhancement **tranche 6** — provider reliability + smoke contracts (hook/onboarding reliability helpers/tests, backend provider/keyring edge-path assertions, provider UX smoke coverage); see git log for `6eb0688`.
 - Invoke transport: `npm run test:invoke:strict` runs as part of **`npm run stability:signoff` on all platforms.** On Windows the runner exercises the serialization contract via filtered lib tests (MockRuntime/linking avoids `STATUS_ENTRYPOINT_NOT_FOUND`); on Unix run `cargo test --manifest-path src-tauri/Cargo.toml --features invoke-smoke --test shell_integration_invoke_smoke` for full transport assertions ([`docs/runtime-contracts.md`](runtime-contracts.md)).
 
 ## Recently Shipped Slices
+
+### Enhancement tranche 6 (provider reliability + smoke contracts)
+
+- Frontend reliability seams added and tested for provider orchestration:
+  - request supersession/stale-response guard helpers in [`src/hooks/useProviderAiState.ts`](../src/hooks/useProviderAiState.ts)
+  - onboarding failure/disable-state helpers in [`src/components/FirstRunSetup.tsx`](../src/components/FirstRunSetup.tsx)
+- Backend reliability assertions expanded:
+  - provider auth/env/keyring edge behavior in [`src-tauri/tests/provider_host_behavior.rs`](../src-tauri/tests/provider_host_behavior.rs)
+  - keyring validation/error-prefix contracts in [`src-tauri/src/provider_secrets.rs`](../src-tauri/src/provider_secrets.rs)
+- Added provider UX smoke coverage in [`src/core/providerUiState.smoke.test.ts`](../src/core/providerUiState.smoke.test.ts) and updated README scripted-smoke summary.
 
 ### Enhancement tranche 5 (docs truth, link smoke depth, release-readiness notes)
 
@@ -350,10 +360,41 @@ Do not set this flag from general onboarding Save/Quick start/Skip flows.
 - `settings_persistence` concurrent-write coverage relies on atomic-save retries for `PermissionDenied` and transient **`NotFound`** races on Windows renames; if a failure persists after retries, treat it as a real regression (not a flake).
 - PowerShell profile warnings in local shell startup can appear in tool output
 and are unrelated to app tests.
+- Provider-keyring behavior is machine-dependent (stored secrets, credential manager availability, environment leakage). Tests in `provider_host_behavior.rs` now tolerate expected local variance while still enforcing user-visible contract classes.
+
+## Strategic Eval (Where We Are / Where We Are Going)
+
+### Where we are now
+
+- Core reliability contracts are in good shape: lifecycle, shell integration, invoke spine, and provider edge-path coverage have automated guardrails.
+- UX is increasingly coherent, but still spread across layered surfaces (`FirstRunSetup`, `AppSettingsModal`, status strip, command palette actions).
+- Current architecture is still partly “feature islands” sharing contracts, rather than one consistently-composed product shell.
+
+### Where we are going next (first-class app layer)
+
+The next priority is to make Mach feel like **one app** instead of a set of strong subsystems:
+
+1. **First-class provider UX layer**
+   - unify copy/status semantics for provider failures and pending states across onboarding, settings, history actions, and freeform prompt entry
+   - reduce duplicated state transitions between `FirstRunSetup` and `useProviderAiState` pathways
+2. **Cross-surface command consistency**
+   - align command-palette actions, status strip hints, and modal toggles so each capability has one canonical state model
+3. **Interaction polish with contract tests**
+   - continue converting “manual-only” dogfood rows into scripted smoke where possible, especially around settings/palette/surface coordination
 
 ## Open Backlog (Recommended Priority)
 
-### 1) Shell Integration P5 follow-up (status-path consolidation)
+### 1) First-class app layer (provider UX + surface unification)
+
+Goal: make provider/AI workflows read as one cohesive product flow across onboarding, settings, composer/history actions, and runtime status surfaces.
+
+Potential tasks:
+
+- consolidate duplicated provider UX state handling between `FirstRunSetup` and `useProviderAiState` into shared view-model helpers
+- standardize user-facing provider status/error strings and loading semantics across all entry points
+- add smoke contracts for “same intent, same outcome” across command palette, settings toggles, and runtime actions
+
+### 2) Shell Integration P5 follow-up (status-path consolidation)
 
 Goal: keep invoke / shell-status contract coverage aligned with backend wire-shape as `shell_integration_status` evolves.
 
@@ -379,10 +420,11 @@ Potential tasks:
 
 ## Recent Commits (most relevant)
 
+- `6eb0688` `:white_check_mark: test(provider): tighten reliability contracts and smoke coverage`
+- `3490822` `:white_check_mark: test(contracts): ship tranche 5 docs and compiler-style link-span coverage`
+- `0d7824f` `:white_check_mark: test: tranche 4 invoke spine, OSC133 depth, UX smoke`
 - `58bc84a` `:sparkles: feat(composer): tighten prediction and history acceptance model`
 - `817b5d1` `:sparkles: feat(composer): add completion engine and composer assist flows`
 - `52e12cc` `:white_check_mark: test(ux-smoke): add pane focus and follow-output contracts`
 - `c49ccd6` `:white_check_mark: test(shell-integration): add strict invoke promotion path and parity guards`
 - `30f7896` `:white_check_mark: test(shell-integration): scaffold non-blocking invoke transport smoke`
-- `5737453` `:white_check_mark: test(shell-integration): lock shell status wire-shape and error-path contracts`
-- `26ab423` `:recycle: refactor(shell-integration): consolidate shell status builders and parity guards`

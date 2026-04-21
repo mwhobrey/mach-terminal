@@ -23,6 +23,50 @@ export function providerToggleStatus(providerId: string, enabled: boolean): stri
   return `${enabled ? "Enabled" : "Disabled"} provider ${providerId}.`;
 }
 
+export function providerUnavailableStatus(providerId: string): string {
+  return `Provider ${providerId} is unavailable in this build.`;
+}
+
+export function providerOptionSuffix(executable: boolean): string {
+  return executable ? "" : " (unavailable)";
+}
+
+export function providerEndpointSavedStatus(providerId: string): string {
+  return `Saved endpoint for ${providerId}.`;
+}
+
+export function providerApiKeyRequiredStatus(providerId: string): string {
+  return `Enter an API key for ${providerId} before saving.`;
+}
+
+export function providerApiKeySavedStatus(providerId: string): string {
+  return `Saved API key for ${providerId}.`;
+}
+
+export function providerApiKeyClearedStatus(providerId: string): string {
+  return `Cleared API key for ${providerId}.`;
+}
+
+export function providerRoutingSavedStatus(): string {
+  return "Saved routing settings.";
+}
+
+export function aiRoutingOptInStatus(enabled: boolean): string {
+  return enabled ? "AI routing enabled." : "AI routing disabled.";
+}
+
+export function aiPromptPendingStatus(): string {
+  return "Running AI prompt...";
+}
+
+export function aiPromptReadyStatus(): string {
+  return "AI response ready.";
+}
+
+export function aiOptInRequiredStatus(): string {
+  return "AI is disabled in routing settings.";
+}
+
 export function classifyAiError(message: string): AiErrorCategory {
   const lowered = message.toLowerCase();
   if (lowered.includes("routing is disabled")) {

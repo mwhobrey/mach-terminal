@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { normalizeQuickStartProfile, QUICKSTART_ROUTING, toQuickStartProviders } from "../core/onboarding";
-import { isExecutableProvider } from "../core/providerUiState";
+import { isExecutableProvider, providerOptionSuffix } from "../core/providerUiState";
 import type { ProviderRoutingSettings, ProviderSettings, TerminalProfile } from "../core/terminal";
 import {
   providerApiKeySet,
@@ -469,7 +469,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
                         />
                         <span>
                           {row.id}
-                          {!executable ? " (unavailable)" : ""}
+                          {providerOptionSuffix(executable)}
                         </span>
                       </label>
                       <input
@@ -508,7 +508,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
                   {providers.map((provider) => (
                     <option key={provider.id} value={provider.id} disabled={!isExecutableProvider(provider.id)}>
                       {provider.id}
-                      {!isExecutableProvider(provider.id) ? " (unavailable)" : ""}
+                      {providerOptionSuffix(isExecutableProvider(provider.id))}
                     </option>
                   ))}
                 </select>

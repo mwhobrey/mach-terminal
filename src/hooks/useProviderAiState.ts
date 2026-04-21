@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { aiErrorStatusMessage, isExecutableProvider, providerToggleStatus } from "../core/providerUiState";
+import {
+  aiErrorStatusMessage,
+  aiPromptPendingStatus,
+  aiPromptReadyStatus,
+  aiRoutingOptInStatus,
+  isExecutableProvider,
+  providerApiKeyClearedStatus,
+  providerApiKeyRequiredStatus,
+  providerApiKeySavedStatus,
+  providerEndpointSavedStatus,
+  providerRoutingSavedStatus,
+  providerToggleStatus,
+  providerUnavailableStatus,
+} from "../core/providerUiState";
 import { PROVIDER_REGISTRY, type ProviderDescriptor } from "../core/providers";
 import {
   aiExecute,
@@ -197,7 +210,7 @@ export function useProviderAiState({
 
   const toggleProvider = useCallback(async (providerId: string, enabled: boolean) => {
     if (enabled && !isExecutableProvider(providerId)) {
-      setProviderConfigStatus(`Provider ${providerId} is not executable yet.`);
+      setProviderConfigStatus(providerUnavailableStatus(providerId));
       return;
     }
     try {
@@ -221,7 +234,7 @@ export function useProviderAiState({
   const saveProviderApiKey = useCallback(async (providerId: string) => {
     const apiKey = providerApiKeyDrafts[providerId]?.trim() ?? "";
     if (!apiKey) {
-      setProviderConfigStatus(`Enter an API key for ${providerId} before saving.`);
+      setProviderConfigStatus(providerApiKeyRequiredStatus(providerId));
       return;
     }
     try {
@@ -229,7 +242,7 @@ export function useProviderAiState({
       setProviderApiKeyDrafts((current) => ({ ...current, [providerId]: "" }));
       const providerDescriptors = await providerList();
       applyProviderDescriptors(providerDescriptors);
-      setProviderConfigStatus(`Saved API key for ${providerId}.`);
+      setProviderConfigStatus(providerApiKeySavedStatus(providerId));
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to update provider API key.");
     }
@@ -241,7 +254,7 @@ export function useProviderAiState({
       setProviderApiKeyDrafts((current) => ({ ...current, [providerId]: "" }));
       const providerDescriptors = await providerList();
       applyProviderDescriptors(providerDescriptors);
-      setProviderConfigStatus(`Cleared API key for ${providerId}.`);
+      setProviderConfigStatus(providerApiKeyClearedStatus(providerId));
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to clear provider API key.");
     }
@@ -253,7 +266,7 @@ export function useProviderAiState({
       await providerEndpointSet(providerId, endpoint.length > 0 ? endpoint : null);
       const providerDescriptors = await providerList();
       applyProviderDescriptors(providerDescriptors);
-      setProviderConfigStatus(`Saved endpoint for ${providerId}.`);
+      setProviderConfigStatus(providerEndpointSavedStatus(providerId));
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to update provider endpoint.");
     }
@@ -261,7 +274,7 @@ export function useProviderAiState({
 
   const saveRoutingConfig = useCallback(async () => {
     if (!isExecutableProvider(routingDraft.default_provider)) {
-      setProviderConfigStatus(`Provider ${routingDraft.default_provider} cannot be used yet.`);
+      setProviderConfigStatus(providerUnavailableStatus(routingDraft.default_provider));
       return;
     }
     try {
@@ -280,7 +293,7 @@ export function useProviderAiState({
         anthropic_model: updated.anthropic_model,
         custom_openai_model: updated.custom_openai_model,
       });
-      setProviderConfigStatus("Saved routing settings.");
+      setProviderConfigStatus(providerRoutingSavedStatus());
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to save routing settings.");
     }
@@ -312,7 +325,7 @@ export function useProviderAiState({
         anthropic_model: updated.anthropic_model,
         custom_openai_model: updated.custom_openai_model,
       });
-      setProviderConfigStatus(enabled ? "AI routing enabled." : "AI routing disabled.");
+      setProviderConfigStatus(aiRoutingOptInStatus(enabled));
     } catch (error) {
       onRuntimeError(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
     }
@@ -332,13 +345,13 @@ export function useProviderAiState({
       return;
     }
     if (!isExecutableProvider(routing.default_provider)) {
-      setAiRequestStatus(`Provider ${routing.default_provider} is not executable yet.`);
+      setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
       return;
     }
     const requestId = nextAiRequestId(latestAiRequestRef.current);
     latestAiRequestRef.current = requestId;
     setAiRequestInFlight(true);
-    setAiRequestStatus("Running AI prompt...");
+    setAiRequestStatus(aiPromptPendingStatus());
     try {
       const response = await aiExecute({
         session_id: activeSession.id,
@@ -351,7 +364,7 @@ export function useProviderAiState({
         return;
       }
       setAiResponse(response.output);
-      setAiRequestStatus("AI response ready.");
+      setAiRequestStatus(aiPromptReadyStatus());
     } catch (error) {
       if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         return;
@@ -372,7 +385,7 @@ export function useProviderAiState({
       return;
     }
     if (!isExecutableProvider(routing.default_provider)) {
-      setAiRequestStatus(`Provider ${routing.default_provider} is not executable yet.`);
+      setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
       return;
     }
     const requestId = nextAiRequestId(latestAiRequestRef.current);
@@ -416,7 +429,7 @@ export function useProviderAiState({
       return;
     }
     if (!isExecutableProvider(routing.default_provider)) {
-      setAiRequestStatus(`Provider ${routing.default_provider} is not executable yet.`);
+      setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
       return;
     }
     const requestId = nextAiRequestId(latestAiRequestRef.current);
