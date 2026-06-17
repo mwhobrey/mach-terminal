@@ -5,9 +5,10 @@ This document defines the first stable contract between the frontend shell and R
 ## Tauri Commands
 
 - `runtime_capabilities() -> RuntimeCapabilities` — `session_persistence` is **true** when split-pane layout is stored under the app config directory (`workspace_layout.json`). It does **not** mean shell processes survive process restart (PTY sessions still get new IDs each launch).
-- `profile_get() -> TerminalProfile`
+- `detect_shells() -> ShellCandidate[]` — host probe for the profile picker. Each `{ id, label, shell, args, kind ("native"|"wsl"|"posix"), available, is_default }`. Windows enumerates native shells + WSL distros (`wsl.exe -l -q`); POSIX returns `$SHELL` + `/etc/shells`. Best-effort; never spawns the shell itself.
+- `profile_get() -> TerminalProfile` (now includes `args: string[]`)
 - `profile_set(profile: TerminalProfile) -> TerminalProfile`
-- `profile_patch(patch: ProfilePatch) -> TerminalProfile` (`shell`/`cwd` support null to clear values)
+- `profile_patch(patch: ProfilePatch) -> TerminalProfile` (`shell`/`cwd` support null to clear values; `args` replaces the arg list wholesale when present, spawned via `CommandBuilder.args`)
 - `provider_settings_get() -> ProviderSettings[]`
 - `provider_settings_set(providers: ProviderSettings[]) -> ProviderSettings[]`
 - `provider_set_enabled(provider_id: string, enabled: bool) -> ProviderSettings[]`

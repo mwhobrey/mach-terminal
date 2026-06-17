@@ -16,6 +16,27 @@ pub struct WorkspacePaneSnapshot {
     pub session_id: Option<String>,
 }
 
+/// A tab the frontend can respawn on the next launch. PTY processes die with the
+/// backend, so we persist enough to recreate the tab. `session_id` is the id the
+/// tab had when persisted and is the join key to `WorkspacePaneSnapshot::session_id`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorableSession {
+    pub session_id: String,
+    #[serde(default)]
+    pub shell: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Stable id for AI chat persistence across session respawns.
+    #[serde(default)]
+    pub chat_key: Option<String>,
+    /// Last input posture: `operator` or `commander` (legacy `console`/`ai` accepted).
+    #[serde(default)]
+    pub input_mode: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceLayout {
@@ -25,6 +46,10 @@ pub struct WorkspaceLayout {
     pub panes: Vec<WorkspacePaneSnapshot>,
     pub active_pane_id: String,
     pub split_direction: String,
+    /// Restorable tab descriptors. `#[serde(default)]` keeps layouts written by
+    /// older builds (which lack this field) loadable.
+    #[serde(default)]
+    pub sessions: Vec<RestorableSession>,
 }
 
 fn default_settings_schema_version() -> u32 {
@@ -46,6 +71,11 @@ fn default_custom_openai_model() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalProfile {
     pub shell: Option<String>,
+    /// Arguments passed to the shell executable on spawn (e.g. `["-d", "Ubuntu"]`
+    /// for `wsl.exe`, `["-NoLogo"]` for pwsh). Empty = bare invocation. Lets a
+    /// profile target a specific WSL distro / login shell without a wrapper exe.
+    #[serde(default)]
+    pub args: Vec<String>,
     pub cwd: Option<String>,
     pub env: HashMap<String, String>,
     pub font_size: u8,
@@ -60,6 +90,7 @@ impl Default for TerminalProfile {
     fn default() -> Self {
         Self {
             shell: None,
+            args: Vec::new(),
             cwd: None,
             env: HashMap::new(),
             font_size: 13,
@@ -67,6 +98,28 @@ impl Default for TerminalProfile {
             show_composer_assist_metrics: false,
         }
     }
+}
+
+/// A shell the host detected (or a sensible default), surfaced to the profile
+/// picker so users select from real options instead of typing an exe name.
+/// `available` is false for well-known shells that were not found on this system
+/// (kept in the list so the UI can explain why they're disabled).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellCandidate {
+    /// Stable identifier, e.g. `windows-powershell`, `pwsh`, `wsl:Ubuntu`, `posix:/bin/zsh`.
+    pub id: String,
+    /// Human-facing label, e.g. `Windows PowerShell`, `Ubuntu (WSL)`.
+    pub label: String,
+    /// Executable to spawn.
+    pub shell: String,
+    /// Arguments to spawn the shell with.
+    pub args: Vec<String>,
+    /// Coarse grouping for the UI: `native` | `wsl` | `posix`.
+    pub kind: String,
+    /// Whether the executable/distro was actually detected on this system.
+    pub available: bool,
+    /// True for the single recommended default on this platform.
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +141,14 @@ pub struct ProviderRoutingSettings {
     #[serde(default = "default_custom_openai_model")]
     pub custom_openai_model: String,
     pub ai_feature_enabled: bool,
+    #[serde(default)]
+    pub system_prompt: String,
+    #[serde(default = "default_ai_context_budget_chars")]
+    pub ai_context_budget_chars: usize,
+}
+
+fn default_ai_context_budget_chars() -> usize {
+    28_000
 }
 
 impl Default for ProviderRoutingSettings {
@@ -99,6 +160,8 @@ impl Default for ProviderRoutingSettings {
             anthropic_model: "claude-3-5-haiku-latest".to_string(),
             custom_openai_model: "gpt-4o-mini".to_string(),
             ai_feature_enabled: false,
+            system_prompt: String::new(),
+            ai_context_budget_chars: default_ai_context_budget_chars(),
         }
     }
 }
@@ -208,6 +271,9 @@ pub struct LegacyAppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProfilePatch {
     pub shell: Option<Option<String>>,
+    /// `Some(vec)` replaces args wholesale; omit for no change.
+    #[serde(default)]
+    pub args: Option<Vec<String>>,
     pub cwd: Option<Option<String>>,
     pub font_size: Option<u8>,
     #[serde(default)]
@@ -224,6 +290,8 @@ pub struct ProviderRoutingPatch {
     pub anthropic_model: Option<String>,
     pub custom_openai_model: Option<String>,
     pub ai_feature_enabled: Option<bool>,
+    pub system_prompt: Option<String>,
+    pub ai_context_budget_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +413,35 @@ pub struct AiPromptContext {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AiChatTurn {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderMessage {
+    pub role: String,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<AiToolCall>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct AiExecuteRequest {
     pub session_id: String,
     pub prompt: String,
@@ -353,12 +450,29 @@ pub struct AiExecuteRequest {
     pub intent: Option<String>,
     #[serde(default)]
     pub context: Option<AiPromptContext>,
+    /// Prior user/assistant turns (current `prompt` is the latest user message).
+    #[serde(default)]
+    pub history: Option<Vec<AiChatTurn>>,
+    #[serde(default)]
+    pub enable_tools: bool,
+    #[serde(default)]
+    pub use_provider_messages: bool,
+    #[serde(default)]
+    pub provider_messages: Option<Vec<AiProviderMessage>>,
+    /// OpenAI-style tool definitions (passed through from the frontend).
+    #[serde(default)]
+    pub tools: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiExecuteResponse {
     pub provider_id: String,
     pub output: String,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<AiToolCall>>,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

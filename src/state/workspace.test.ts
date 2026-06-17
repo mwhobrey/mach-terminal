@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRestorableSessions,
   closePane,
   createWorkspaceState,
   reconcileWorkspace,
+  remapLayoutToSnapshot,
   resolveNextActivePaneIdAfterClose,
   removeSessionFromWorkspace,
   restoreWorkspaceFromSnapshot,
@@ -121,5 +123,68 @@ describe("workspace restore", () => {
     expect(layout.schemaVersion).toBe(WORKSPACE_LAYOUT_SCHEMA_VERSION);
     expect(layout.splitDirection).toBe("row");
     expect(layout.panes[0].sessionId).toBe("s-1");
+    expect(layout.sessions).toEqual([]);
+  });
+
+  it("workspaceLayoutFromSnapshot carries restorable sessions", () => {
+    const snap = {
+      rootPaneId: "pane-1",
+      activePaneId: "pane-1",
+      splitDirection: "column" as const,
+      panes: [{ id: "pane-1", sessionId: "session-1" as string | null }],
+    };
+    const layout = workspaceLayoutFromSnapshot(snap, [
+      { sessionId: "session-1", shell: "wsl.exe", cwd: "/home/me", name: "build" },
+    ]);
+    expect(layout.sessions).toEqual([{ sessionId: "session-1", shell: "wsl.exe", cwd: "/home/me", name: "build" }]);
+  });
+});
+
+describe("buildRestorableSessions", () => {
+  it("captures shell, cwd, and custom name, omitting empties", () => {
+    const result = buildRestorableSessions(
+      [
+        { id: "session-1", shell: "wsl.exe" },
+        { id: "session-2", shell: "pwsh.exe" },
+      ],
+      (id) => (id === "session-1" ? "/home/me" : undefined),
+      { "session-2": "deploy" },
+    );
+    expect(result).toEqual([
+      { sessionId: "session-1", shell: "wsl.exe", cwd: "/home/me" },
+      { sessionId: "session-2", shell: "pwsh.exe", name: "deploy" },
+    ]);
+  });
+
+  it("drops whitespace-only names", () => {
+    const result = buildRestorableSessions([{ id: "session-1", shell: "bash" }], () => undefined, {
+      "session-1": "   ",
+    });
+    expect(result).toEqual([{ sessionId: "session-1", shell: "bash" }]);
+  });
+});
+
+describe("remapLayoutToSnapshot", () => {
+  it("rewrites pane session ids via the id map and nulls unmapped ones", () => {
+    const snapshot = remapLayoutToSnapshot(
+      {
+        rootPaneId: "pane-1",
+        activePaneId: "pane-2",
+        splitDirection: "row",
+        panes: [
+          { id: "pane-1", sessionId: "session-1" },
+          { id: "pane-2", sessionId: "session-2" },
+          { id: "pane-3", sessionId: "session-gone" },
+        ],
+      },
+      { "session-1": "session-7", "session-2": "session-8" },
+    );
+    expect(snapshot.panes).toEqual([
+      { id: "pane-1", sessionId: "session-7" },
+      { id: "pane-2", sessionId: "session-8" },
+      { id: "pane-3", sessionId: null },
+    ]);
+    expect(snapshot.activePaneId).toBe("pane-2");
+    expect(snapshot.splitDirection).toBe("row");
   });
 });

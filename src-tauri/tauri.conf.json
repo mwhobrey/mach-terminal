@@ -5,7 +5,7 @@
   "identifier": "com.whobs.machterminal",
   "build": {
     "beforeDevCommand": "npm run dev:tauri",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1430",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

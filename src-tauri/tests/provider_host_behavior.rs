@@ -34,9 +34,7 @@ fn request() -> AiExecuteRequest {
     AiExecuteRequest {
         session_id: "session-test".to_string(),
         prompt: "explain ls -la".to_string(),
-        provider_id: None,
-        intent: None,
-        context: None,
+        ..Default::default()
     }
 }
 
@@ -112,7 +110,8 @@ async fn rejects_configured_provider_without_credentials() {
 
 #[tokio::test]
 async fn uses_env_credentials_when_provider_secret_is_not_available() {
-    let _env_guard = EnvVarGuard::set("OPENAI_API_KEY", "sk-env-fallback-test");
+    const ENV_KEY: &str = "MACH_TEST_OPENAI_API_KEY";
+    let _env_guard = EnvVarGuard::set(ENV_KEY, "sk-env-fallback-test");
     let client = default_runtime_client().expect("runtime client");
     let mut settings = AppSettings::default();
     settings.provider_routing.ai_feature_enabled = true;
@@ -120,6 +119,7 @@ async fn uses_env_credentials_when_provider_secret_is_not_available() {
     for provider in &mut settings.providers {
         if provider.id == "openai" {
             provider.enabled = true;
+            provider.api_key_env = Some(ENV_KEY.to_string());
             // Resolve credentials first, then fail at connect stage to prove env fallback.
             provider.endpoint = Some("http://127.0.0.1:1".to_string());
         }

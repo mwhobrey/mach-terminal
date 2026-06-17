@@ -157,6 +157,9 @@ pub fn apply_profile_patch(profile: &mut TerminalProfile, patch: &ProfilePatch) 
     if let Some(shell) = patch.shell.clone() {
         profile.shell = shell;
     }
+    if let Some(args) = patch.args.clone() {
+        profile.args = args;
+    }
     if let Some(cwd) = patch.cwd.clone() {
         profile.cwd = cwd;
     }
@@ -197,6 +200,12 @@ pub fn apply_provider_routing_patch(routing: &mut ProviderRoutingSettings, patch
     }
     if let Some(ai_feature_enabled) = patch.ai_feature_enabled {
         routing.ai_feature_enabled = ai_feature_enabled;
+    }
+    if let Some(system_prompt) = patch.system_prompt.clone() {
+        routing.system_prompt = system_prompt;
+    }
+    if let Some(ai_context_budget_chars) = patch.ai_context_budget_chars {
+        routing.ai_context_budget_chars = ai_context_budget_chars.clamp(4_000, 120_000);
     }
 }
 
@@ -451,6 +460,8 @@ pub fn set_provider_routing(
         anthropic_model: provider_routing.anthropic_model.trim().to_string(),
         custom_openai_model: provider_routing.custom_openai_model.trim().to_string(),
         ai_feature_enabled: provider_routing.ai_feature_enabled,
+        system_prompt: provider_routing.system_prompt.trim().to_string(),
+        ai_context_budget_chars: provider_routing.ai_context_budget_chars.clamp(4_000, 120_000),
     };
     update_settings(app, |settings| {
         validate_provider_routing(&settings.providers, &normalized_routing)?;
@@ -473,4 +484,52 @@ pub fn patch_provider_routing(
         validate_provider_routing(&settings.providers, &settings.provider_routing)?;
         Ok(settings.provider_routing.clone())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_profile_patch;
+    use crate::models::{ProfilePatch, TerminalProfile};
+
+    #[test]
+    fn profile_patch_sets_shell_and_args_together() {
+        let mut profile = TerminalProfile::default();
+        let patch = ProfilePatch {
+            shell: Some(Some("wsl.exe".to_string())),
+            args: Some(vec!["-d".to_string(), "Ubuntu".to_string()]),
+            ..ProfilePatch::default()
+        };
+        apply_profile_patch(&mut profile, &patch);
+        assert_eq!(profile.shell.as_deref(), Some("wsl.exe"));
+        assert_eq!(profile.args, vec!["-d".to_string(), "Ubuntu".to_string()]);
+    }
+
+    #[test]
+    fn profile_patch_omitting_args_preserves_existing() {
+        let mut profile = TerminalProfile {
+            args: vec!["-NoLogo".to_string()],
+            ..TerminalProfile::default()
+        };
+        let patch = ProfilePatch {
+            font_size: Some(15),
+            ..ProfilePatch::default()
+        };
+        apply_profile_patch(&mut profile, &patch);
+        assert_eq!(profile.args, vec!["-NoLogo".to_string()]);
+        assert_eq!(profile.font_size, 15);
+    }
+
+    #[test]
+    fn profile_patch_clears_args_with_empty_vec() {
+        let mut profile = TerminalProfile {
+            args: vec!["-d".to_string(), "Ubuntu".to_string()],
+            ..TerminalProfile::default()
+        };
+        let patch = ProfilePatch {
+            args: Some(Vec::new()),
+            ..ProfilePatch::default()
+        };
+        apply_profile_patch(&mut profile, &patch);
+        assert!(profile.args.is_empty());
+    }
 }

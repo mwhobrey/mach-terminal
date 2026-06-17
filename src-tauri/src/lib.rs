@@ -11,6 +11,7 @@ pub mod provider_host;
 pub mod provider_secrets;
 pub mod session_manager;
 pub mod settings;
+pub mod shell_detect;
 mod terminal_core;
 pub mod workspace_store;
 mod telemetry;
@@ -37,6 +38,12 @@ struct AiRuntime {
 #[instrument]
 fn runtime_capabilities() -> terminal_core::RuntimeCapabilities {
     terminal_core::capabilities()
+}
+
+#[tauri::command]
+#[instrument]
+fn detect_shells() -> Vec<crate::models::ShellCandidate> {
+    shell_detect::detect_shells()
 }
 
 #[tauri::command]
@@ -395,6 +402,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             runtime_capabilities,
+            detect_shells,
             profile_get,
             profile_set,
             profile_patch,

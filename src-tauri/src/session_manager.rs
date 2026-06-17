@@ -130,6 +130,9 @@ impl SessionManager {
             .map_err(|error| format!("failed to open PTY: {error}"))?;
 
         let mut command_builder = CommandBuilder::new(&shell);
+        if !profile.args.is_empty() {
+            command_builder.args(&profile.args);
+        }
         if let Some(cwd_value) = &cwd {
             command_builder.cwd(PathBuf::from(cwd_value));
         }
@@ -389,7 +392,10 @@ impl SessionManager {
             PtyLifecycleEvent {
                 session_id: session_id.clone(),
                 status: STATUS_RUNNING.to_string(),
-                message: Some(format!("spawned {shell}")),
+                // No cosmetic "spawned <shell>" banner: it only ate vertical space at
+                // the top of the terminal. The `running` status flip is what matters;
+                // exit/error events still carry their own user-facing messages.
+                message: None,
                 timestamp_ms: unix_timestamp_ms(),
                 exit_code: None,
             },
@@ -829,7 +835,23 @@ fn unix_timestamp_ms() -> u64 {
 pub fn default_shell() -> String {
     #[cfg(target_os = "windows")]
     {
-        return "pwsh.exe".to_string();
+        // Prefer PowerShell 7 when it's actually installed; otherwise fall back to
+        // the Windows PowerShell 5.1 that ships with every supported Windows. The
+        // previous unconditional `pwsh.exe` failed to spawn on stock machines.
+        if crate::shell_detect::find_on_path("pwsh.exe").is_some() {
+            return "pwsh.exe".to_string();
+        }
+        return std::env::var_os("SystemRoot")
+            .map(std::path::PathBuf::from)
+            .map(|root| {
+                root.join("System32")
+                    .join("WindowsPowerShell")
+                    .join("v1.0")
+                    .join("powershell.exe")
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|| "powershell.exe".to_string());
     }
     #[cfg(target_os = "macos")]
     {

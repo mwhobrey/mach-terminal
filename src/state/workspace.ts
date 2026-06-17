@@ -1,5 +1,7 @@
 export type SplitDirection = "row" | "column";
 
+import type { SessionInputMode } from "../core/inputMode";
+
 export interface PaneNode {
   id: string;
   sessionId: string | null;
@@ -19,6 +21,21 @@ export interface WorkspaceSnapshot {
   splitDirection: SplitDirection;
 }
 
+/**
+ * A tab we can respawn on the next launch. PTY sessions are live processes that
+ * die with the backend, so this descriptor captures enough to recreate the tab:
+ * its persist-time `sessionId` (the join key to `panes[].sessionId`), the shell,
+ * the last-known cwd, custom name, and input posture.
+ */
+export interface RestorableSession {
+  sessionId: string;
+  shell: string;
+  cwd?: string;
+  name?: string;
+  chatKey?: string;
+  inputMode?: SessionInputMode;
+}
+
 /** Disk / Tauri payload (camelCase, matches Rust `WorkspaceLayout`). */
 export interface WorkspaceLayout {
   schemaVersion: number;
@@ -26,17 +43,68 @@ export interface WorkspaceLayout {
   panes: PaneNode[];
   activePaneId: string;
   splitDirection: SplitDirection;
+  /** Restorable tab descriptors; empty/absent on older layouts. */
+  sessions?: RestorableSession[];
 }
 
 export const WORKSPACE_LAYOUT_SCHEMA_VERSION = 1;
 
-export function workspaceLayoutFromSnapshot(snapshot: WorkspaceSnapshot): WorkspaceLayout {
+export function workspaceLayoutFromSnapshot(
+  snapshot: WorkspaceSnapshot,
+  sessions: RestorableSession[] = [],
+): WorkspaceLayout {
   return {
     schemaVersion: WORKSPACE_LAYOUT_SCHEMA_VERSION,
     rootPaneId: snapshot.rootPaneId,
     panes: snapshot.panes.map((pane) => ({ ...pane })),
     activePaneId: snapshot.activePaneId,
     splitDirection: snapshot.splitDirection,
+    sessions: sessions.map((session) => ({ ...session })),
+  };
+}
+
+/** Build restorable descriptors from the live session list, cwd map, and custom names. */
+export function buildRestorableSessions(
+  sessions: readonly { id: string; shell: string }[],
+  cwdById: (sessionId: string) => string | undefined,
+  names: Record<string, string | undefined>,
+  inputModes: Record<string, SessionInputMode | undefined> = {},
+  chatKeys: Record<string, string | undefined> = {},
+): RestorableSession[] {
+  return sessions.map((session) => {
+    const name = (names[session.id] ?? "").trim();
+    const cwd = cwdById(session.id);
+    const inputMode = inputModes[session.id];
+    const chatKey = chatKeys[session.id];
+    return {
+      sessionId: session.id,
+      shell: session.shell,
+      ...(cwd && cwd.length > 0 ? { cwd } : {}),
+      ...(name.length > 0 ? { name } : {}),
+      ...(chatKey && chatKey.length > 0 ? { chatKey } : {}),
+      ...(inputMode && inputMode !== "operator" ? { inputMode } : {}),
+    };
+  });
+}
+
+/**
+ * Rewrite a persisted layout's pane→session references onto freshly-respawned
+ * session ids. Panes whose old id has no mapping (e.g. a tab that failed to
+ * respawn) are cleared to `null` and later reconciled. Returns a snapshot ready
+ * to feed `restoreWorkspaceFromSnapshot`.
+ */
+export function remapLayoutToSnapshot(
+  layout: Pick<WorkspaceLayout, "rootPaneId" | "panes" | "activePaneId" | "splitDirection">,
+  idMap: Record<string, string>,
+): WorkspaceSnapshot {
+  return {
+    rootPaneId: layout.rootPaneId,
+    activePaneId: layout.activePaneId,
+    splitDirection: layout.splitDirection,
+    panes: layout.panes.map((pane) => ({
+      id: pane.id,
+      sessionId: pane.sessionId && idMap[pane.sessionId] ? idMap[pane.sessionId] : null,
+    })),
   };
 }
 

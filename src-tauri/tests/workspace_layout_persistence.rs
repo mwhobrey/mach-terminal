@@ -1,4 +1,6 @@
-use mach_terminal_lib::models::{WorkspaceLayout, WorkspacePaneSnapshot, WORKSPACE_LAYOUT_SCHEMA_VERSION};
+use mach_terminal_lib::models::{
+    RestorableSession, WorkspaceLayout, WorkspacePaneSnapshot, WORKSPACE_LAYOUT_SCHEMA_VERSION,
+};
 use mach_terminal_lib::workspace_store::{load_workspace_layout_from_path, save_workspace_layout_to_path};
 use std::fs;
 use tempfile::tempdir;
@@ -19,6 +21,14 @@ fn sample_layout() -> WorkspaceLayout {
         ],
         active_pane_id: "pane-2".to_string(),
         split_direction: "column".to_string(),
+        sessions: vec![RestorableSession {
+            session_id: "session-a".to_string(),
+            shell: "wsl.exe".to_string(),
+            cwd: Some("/home/me".to_string()),
+            name: Some("build".to_string()),
+            chat_key: Some("chat-abc".to_string()),
+            input_mode: Some("console".to_string()),
+        }],
     }
 }
 
@@ -34,6 +44,23 @@ fn workspace_layout_save_and_load_round_trip() {
     assert_eq!(loaded.active_pane_id, "pane-2");
     assert_eq!(loaded.panes.len(), 2);
     assert_eq!(loaded.panes[0].session_id.as_deref(), Some("session-a"));
+    assert_eq!(loaded.sessions.len(), 1);
+    assert_eq!(loaded.sessions[0].session_id, "session-a");
+    assert_eq!(loaded.sessions[0].name.as_deref(), Some("build"));
+}
+
+#[test]
+fn workspace_layout_without_sessions_field_loads_as_empty() {
+    let temp = tempdir().expect("tempdir");
+    let path = temp.path().join("legacy_workspace_layout.json");
+    // A layout written by an older build: no `sessions` key at all.
+    fs::write(
+        &path,
+        r#"{"schemaVersion":1,"rootPaneId":"pane-1","panes":[{"id":"pane-1","sessionId":null}],"activePaneId":"pane-1","splitDirection":"column"}"#,
+    )
+    .expect("write legacy");
+    let loaded = load_workspace_layout_from_path(&path).expect("load").expect("some layout");
+    assert!(loaded.sessions.is_empty());
 }
 
 #[test]

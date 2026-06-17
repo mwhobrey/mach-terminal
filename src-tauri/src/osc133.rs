@@ -44,8 +44,11 @@ impl Osc133Parser {
             };
             cursor += esc_off;
 
-            if cursor + 5 > work.len() {
-                break;
+            if cursor + 6 > work.len() {
+                // Not enough bytes yet to test the `ESC ] 1 3 3 ;` prefix; stash
+                // from the ESC onward so the next feed can complete the prefix.
+                self.pending = work[cursor..].to_vec();
+                return out;
             }
             if &work[cursor + 1..cursor + 6] != b"]133;" {
                 cursor += 1;
@@ -189,5 +192,24 @@ mod tests {
         let mut p = Osc133Parser::new();
         let got = p.feed(b"\x1b]0;title\x07\x1b]133;A\x07");
         assert_eq!(got, vec![Osc133Kind::PromptStart]);
+    }
+
+    #[test]
+    fn esc_at_chunk_boundary_does_not_panic() {
+        // ESC lands with fewer than the 5 prefix bytes remaining in the chunk.
+        // Previously this read one byte past the slice end and panicked.
+        let mut p = Osc133Parser::new();
+        assert!(p.feed(b"output\x1b]13").is_empty());
+        let got = p.feed(b"3;A\x07");
+        assert_eq!(got, vec![Osc133Kind::PromptStart]);
+    }
+
+    #[test]
+    fn partial_prefix_split_is_preserved() {
+        let mut p = Osc133Parser::new();
+        // Split immediately after ESC — only 1 of 5 prefix bytes present.
+        assert!(p.feed(b"\x1b").is_empty());
+        let got = p.feed(b"]133;D;7\x07");
+        assert_eq!(got, vec![Osc133Kind::OutputEnd { exit_code: Some(7) }]);
     }
 }
