@@ -32,6 +32,7 @@ interface SplitWorkspaceProps {
   sessionInputModes?: Record<string, SessionInputMode>;
   composerSubmitKinds?: Record<string, ComposerSubmitKind>;
   sessionCommandFailures?: Record<string, SessionCommandFailure | undefined>;
+  sessionLastOutputAt?: Record<string, number>;
   aiAssistEnabled?: boolean;
   onComposerDraftChange?: (paneId: string, draft: string) => void;
   onToggleComposerSubmitKind?: (sessionId: string) => void;
@@ -72,6 +73,7 @@ export function SplitWorkspace({
   sessionInputModes = {},
   composerSubmitKinds = {},
   sessionCommandFailures = {},
+  sessionLastOutputAt = {},
   aiAssistEnabled = false,
   onComposerDraftChange,
   onToggleComposerSubmitKind,
@@ -108,6 +110,7 @@ export function SplitWorkspace({
         const inputMode = session ? (sessionInputModes[session.id] ?? defaultSessionInputMode()) : defaultSessionInputMode();
         const composerSubmitKind = session ? composerSubmitKinds[session.id] ?? "command" : "command";
         const commandFailure = session ? sessionCommandFailures[session.id] ?? null : null;
+        const lastOutputAtMs = session ? sessionLastOutputAt[session.id] : undefined;
         return (
           <div
             key={pane.id}
@@ -128,6 +131,7 @@ export function SplitWorkspace({
                 session && onToggleComposerSubmitKind ? () => onToggleComposerSubmitKind(session.id) : undefined
               }
               commandFailure={commandFailure}
+              lastOutputAtMs={lastOutputAtMs}
               onAskAboutFailure={
                 session && onAskAboutFailure ? () => onAskAboutFailure(session.id) : undefined
               }

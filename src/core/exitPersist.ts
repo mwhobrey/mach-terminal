@@ -87,3 +87,22 @@ export async function flushPersistedStateForExit(
   }
   onPhase?.("closing");
 }
+
+/** Flush exit state, then destroy the window. Persist failures still attempt close. */
+export async function runExitPersistAndClose(
+  flush: () => Promise<void>,
+  destroyWindow: () => Promise<void>,
+): Promise<"closed" | "close-failed"> {
+  try {
+    await flush();
+  } catch (error) {
+    console.warn("failed to persist on close", error);
+  }
+  try {
+    await destroyWindow();
+    return "closed";
+  } catch (error) {
+    console.warn("failed to destroy window on close", error);
+    return "close-failed";
+  }
+}

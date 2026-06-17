@@ -50,6 +50,7 @@ import {
   type ComposerSubmitKind,
 } from "../core/composerAiIntent";
 import type { SessionCommandFailure } from "../core/sessionCommandOutcome";
+import { isSessionOutputStale } from "../core/sessionOutputHealth";
 import { isAskFailureShortcut } from "../core/sessionCommandOutcome";
 import {
   createAttachmentId,
@@ -152,6 +153,8 @@ interface TerminalSurfaceProps {
   composerSubmitKind?: ComposerSubmitKind;
   onToggleComposerSubmitKind?: () => void;
   commandFailure?: SessionCommandFailure | null;
+  /** Unix ms of the last pty-output chunk applied for this session. */
+  lastOutputAtMs?: number;
   onAskAboutFailure?: () => void;
   onAiComposerSubmit?: (text: string) => void;
   onAskAiSelection?: (attachment: AiContextAttachment) => void;
@@ -194,6 +197,7 @@ export function TerminalSurface({
   composerSubmitKind = "command",
   onToggleComposerSubmitKind,
   commandFailure = null,
+  lastOutputAtMs,
   onAskAboutFailure,
   onAiComposerSubmit,
   onAskAiSelection,
@@ -275,6 +279,7 @@ export function TerminalSurface({
   const [pasteBypassForSession, setPasteBypassForSession] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [composerDraft, setComposerDraft] = useState("");
+  const [outputHealthTick, setOutputHealthTick] = useState(0);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const completionRequestSeqRef = useRef(0);
   const completionStateRef = useRef(createComposerCompletionState());
@@ -289,6 +294,39 @@ export function TerminalSurface({
   const [completionMetricsTick, setCompletionMetricsTick] = useState(0);
   const terminalPanelRef = useRef<HTMLElement | null>(null);
   const composerLocked = !activeSession || Boolean(exitedInfo);
+  const outputLooksStale = useMemo(
+    () => isSessionOutputStale(activeStatus, lastOutputAtMs),
+    [activeStatus, lastOutputAtMs, outputHealthTick],
+  );
+
+  useEffect(() => {
+    const id = window.setInterval(() => setOutputHealthTick((tick) => tick + 1), 5000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const pumpPendingTerminalWrites = useCallback(() => {
+    if (writeFrameRef.current !== null) {
+      return;
+    }
+    const run = () => {
+      writeFrameRef.current = null;
+      const terminal = terminalRef.current;
+      if (!terminal || pendingWriteRef.current.length === 0) {
+        return;
+      }
+      const chunk = pendingWriteRef.current;
+      pendingWriteRef.current = "";
+      const pin = stickToBottomRef.current;
+      terminal.write(chunk);
+      if (pin) {
+        terminal.scrollToBottom();
+      }
+      if (pendingWriteRef.current.length > 0) {
+        writeFrameRef.current = window.requestAnimationFrame(run);
+      }
+    };
+    writeFrameRef.current = window.requestAnimationFrame(run);
+  }, []);
   const boundedHistoryEntries = useMemo(() => historyEntries.slice(0, COMPOSER_HISTORY_WINDOW), [historyEntries]);
 
   pendingPasteRef.current = pendingPaste;
@@ -1192,23 +1230,10 @@ export function TerminalSurface({
     const delta = activeBuffer.slice(previousLength);
     if (delta.length > 0) {
       pendingWriteRef.current += delta;
-      if (writeFrameRef.current === null) {
-        writeFrameRef.current = window.requestAnimationFrame(() => {
-          if (terminalRef.current && pendingWriteRef.current.length > 0) {
-            const t = terminalRef.current;
-            const pin = stickToBottomRef.current;
-            t.write(pendingWriteRef.current);
-            if (pin) {
-              t.scrollToBottom();
-            }
-          }
-          pendingWriteRef.current = "";
-          writeFrameRef.current = null;
-        });
-      }
       renderedStateRef.current = { sessionId: currentSession, length: activeBuffer.length };
+      pumpPendingTerminalWrites();
     }
-  }, [activeSession, activeBuffer, emitUiSurfacePatch]);
+  }, [activeSession, activeBuffer, emitUiSurfacePatch, pumpPendingTerminalWrites]);
 
   useEffect(() => {
     if (exitedInfo) {
@@ -1237,6 +1262,21 @@ export function TerminalSurface({
         }}
       >
         <div className="terminal-output-column">
+          {outputLooksStale && !exitedInfo ? (
+            <div className="terminal-output-stale-banner" role="status">
+              <span>
+                Session output has not updated recently. The shell may be hung, blocked on input, or the
+                display may have stalled.
+              </span>
+              <button
+                type="button"
+                className="inline-btn ghost"
+                onClick={() => onRequestRestartSessionRef.current?.()}
+              >
+                Restart session
+              </button>
+            </div>
+          ) : null}
           <div className="terminal-output-stack">
         <button
           type="button"

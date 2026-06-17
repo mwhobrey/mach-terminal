@@ -101,7 +101,6 @@ function resolveExecutableDefaultProvider(
 
 interface UseProviderAiStateParams {
   activeSession: PtySessionInfo | undefined;
-  onRuntimeError: (message: string) => void;
   onHistoryActionStatus: (status: string) => void;
   /** Optional cwd/shell/scrollback tail assembled by the host (e.g. App.tsx). */
   buildAiPromptContext?: () => AiPromptContextPayload | undefined;
@@ -165,7 +164,6 @@ function composeAiContext(
 
 export function useProviderAiState({
   activeSession,
-  onRuntimeError,
   onHistoryActionStatus,
   buildAiPromptContext,
   buildAiToolContext,
@@ -257,9 +255,9 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerToggleStatus(providerId, enabled));
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to update provider settings.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider settings.");
     }
-  }, [applyProviderDescriptors, onRuntimeError]);
+  }, [applyProviderDescriptors]);
 
   const updateProviderEndpointDraft = useCallback((providerId: string, endpoint: string) => {
     setProviderEndpointDrafts((current) => ({ ...current, [providerId]: endpoint }));
@@ -282,9 +280,9 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerApiKeySavedStatus(providerId));
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to update provider API key.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider API key.");
     }
-  }, [applyProviderDescriptors, onRuntimeError, providerApiKeyDrafts]);
+  }, [applyProviderDescriptors, providerApiKeyDrafts]);
 
   const clearProviderApiKey = useCallback(async (providerId: string) => {
     try {
@@ -294,9 +292,9 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerApiKeyClearedStatus(providerId));
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to clear provider API key.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to clear provider API key.");
     }
-  }, [applyProviderDescriptors, onRuntimeError]);
+  }, [applyProviderDescriptors]);
 
   const saveProviderEndpoint = useCallback(async (providerId: string) => {
     const endpoint = providerEndpointDrafts[providerId] ?? "";
@@ -306,9 +304,9 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerEndpointSavedStatus(providerId));
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to update provider endpoint.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider endpoint.");
     }
-  }, [applyProviderDescriptors, onRuntimeError, providerEndpointDrafts]);
+  }, [applyProviderDescriptors, providerEndpointDrafts]);
 
   const saveRoutingConfig = useCallback(async () => {
     if (!isExecutableProvider(routingDraft.default_provider)) {
@@ -337,10 +335,9 @@ export function useProviderAiState({
       });
       setProviderConfigStatus(providerRoutingSavedStatus());
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to save routing settings.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to save routing settings.");
     }
   }, [
-    onRuntimeError,
     routingDraft.anthropic_model,
     routingDraft.custom_openai_model,
     routingDraft.default_provider,
@@ -375,10 +372,9 @@ export function useProviderAiState({
       });
       setProviderConfigStatus(aiRoutingOptInStatus(enabled));
     } catch (error) {
-      onRuntimeError(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
+      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
     }
   }, [
-    onRuntimeError,
     routing,
     routingDraft.anthropic_model,
     routingDraft.custom_openai_model,
@@ -389,7 +385,7 @@ export function useProviderAiState({
 
   const runAiPrompt = useCallback(async () => {
     if (!activeSession) {
-      onRuntimeError("No active session selected for AI prompt.");
+      setAiRequestStatus("No active session selected for AI prompt.");
       return;
     }
     if (!isExecutableProvider(routing.default_provider)) {
@@ -420,20 +416,19 @@ export function useProviderAiState({
       }
       const message = messageFromUnknownError(error, "AI execution failed.");
       setAiResponse(null);
-      onRuntimeError(message);
       setAiRequestStatus(aiErrorStatusMessage(message));
     } finally {
       if (shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, aiPrompt, buildAiPromptContext, onAiAssistantReply, onRuntimeError, routing.default_provider]);
+  }, [activeSession, aiPrompt, buildAiPromptContext, onAiAssistantReply, routing.default_provider]);
 
   const runAiPromptWithText = useCallback(
     async (promptText: string, options: RunAiPromptOptions = {}) => {
       const targetSessionId = options.sessionId ?? activeSession?.id;
       if (!targetSessionId) {
-        onRuntimeError("No active session selected for AI prompt.");
+        setAiRequestStatus("No active session selected for AI prompt.");
         return;
       }
       const trimmed = promptText.trim();
@@ -490,7 +485,6 @@ export function useProviderAiState({
         }
         const message = messageFromUnknownError(error, "AI execution failed.");
         setAiResponse(null);
-        onRuntimeError(message);
         setAiRequestStatus(aiErrorStatusMessage(message));
         options.onError?.(message);
       } finally {
@@ -499,7 +493,7 @@ export function useProviderAiState({
         }
       }
     },
-    [activeSession, buildAiPromptContext, buildAiToolContext, enableAiTools, onAiAssistantReply, onRuntimeError, routing.default_provider],
+    [activeSession, buildAiPromptContext, buildAiToolContext, enableAiTools, onAiAssistantReply, routing.default_provider],
   );
 
   const explainCommand = useCallback(async (command: string) => {
@@ -537,7 +531,6 @@ export function useProviderAiState({
         return;
       }
       const message = messageFromUnknownError(error, contract.fallbackErrorMessage);
-      onRuntimeError(message);
       onHistoryActionStatus(contract.historyFailureStatus);
       setAiRequestStatus(aiErrorStatusMessage(message));
     } finally {
@@ -545,7 +538,7 @@ export function useProviderAiState({
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, providers, routing.ai_feature_enabled, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, providers, routing.ai_feature_enabled, routing.default_provider]);
 
   const fixCommand = useCallback(async (command: string) => {
     if (!activeSession) {
@@ -582,7 +575,6 @@ export function useProviderAiState({
         return;
       }
       const message = messageFromUnknownError(error, contract.fallbackErrorMessage);
-      onRuntimeError(message);
       onHistoryActionStatus(contract.historyFailureStatus);
       setAiRequestStatus(aiErrorStatusMessage(message));
     } finally {
@@ -590,7 +582,7 @@ export function useProviderAiState({
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, providers, routing.ai_feature_enabled, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, providers, routing.ai_feature_enabled, routing.default_provider]);
 
   return {
     providers,

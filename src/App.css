@@ -763,6 +763,32 @@ body {
   min-width: 0;
 }
 
+.runtime-error-strip .inline-btn {
+  flex-shrink: 0;
+}
+
+.terminal-output-stale-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin: 0 0.35rem 0.35rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #854d0e;
+  background: rgba(66, 32, 6, 0.55);
+  color: #fde68a;
+  font-size: 0.78rem;
+  z-index: 4;
+}
+
+.terminal-output-stale-banner span {
+  flex: 1 1 14rem;
+  min-width: 0;
+  line-height: 1.35;
+}
+
 .settings-modal-card {
   max-width: min(920px, 100%);
   width: 100%;

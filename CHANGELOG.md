@@ -14,6 +14,13 @@ All notable changes to Mach Terminal are documented in this file.
 - Resizable ops rail; Explain/Safer gated on configured AI providers.
 - Dogfood release CI workflow and `npm run release:build` local production bundles.
 
+### Fixed
+
+- App close after exit-save overlay: grant `core:window:allow-destroy` so `destroy()` succeeds after `preventDefault`; persist failures no longer block close (`runExitPersistAndClose`).
+- AI provider failures no longer pollute the global runtime error strip (status stays in ops-rail AI request status / provider config status).
+- xterm output pump drains pending writes across RAF frames instead of clearing the buffer in one shot.
+- Stale-session banner when a running PTY goes quiet for 45s; runtime error strip has Dismiss.
+
 ### Changed
 
 - Provider settings and onboarding share canonical `buildProviderCards` view-model.

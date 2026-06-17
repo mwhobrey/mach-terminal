@@ -111,6 +111,7 @@ import {
 import { loadOpsRailWidth, saveOpsRailWidth } from "./core/opsRailLayout";
 import {
   flushPersistedStateForExit,
+  runExitPersistAndClose,
   yieldForExitOverlayPaint,
   type ExitPersistPhase,
 } from "./core/exitPersist";
@@ -267,9 +268,11 @@ function App() {
   const [recoveryBanner, setRecoveryBanner] = useState<string | null>(null);
   const [exitPersistPhase, setExitPersistPhase] = useState<ExitPersistPhase | null>(null);
   const exitCloseInFlightRef = useRef(false);
+  const exitAllowDestroyRef = useRef(false);
   const [terminalFontSize, setTerminalFontSize] = useState(13);
   const [minimalShellPrompt, setMinimalShellPrompt] = useState(false);
   const [showComposerAssistMetrics, setShowComposerAssistMetrics] = useState(false);
+  const [sessionLastOutputAt, setSessionLastOutputAt] = useState<Record<string, number>>({});
   const [sessionOsc133Hints, setSessionOsc133Hints] = useState<Record<string, string>>({});
   const [sessionUiSurface, setSessionUiSurface] = useState<Record<string, UiSurfaceState>>({});
   const terminalUiSeqRef = useRef(0);
@@ -543,7 +546,6 @@ function App() {
     fixCommand,
   } = useProviderAiState({
     activeSession,
-    onRuntimeError: (message) => setRuntimeError(message),
     onHistoryActionStatus: (status) => setHistoryActionStatus(status),
     buildAiPromptContext,
     buildAiToolContext: (sessionId: string) => ({
@@ -860,6 +862,9 @@ function App() {
           return;
         }
         unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
+          if (exitAllowDestroyRef.current) {
+            return;
+          }
           if (exitCloseInFlightRef.current) {
             event.preventDefault();
             return;
@@ -868,14 +873,20 @@ function App() {
           exitCloseInFlightRef.current = true;
           setExitPersistPhase("ai-chats");
           await yieldForExitOverlayPaint();
-          try {
-            await flushPersistedState((phase) => setExitPersistPhase(phase));
-            await getCurrentWindow().destroy();
-          } catch (error) {
-            console.warn("failed to persist on close", error);
+          const closeResult = await runExitPersistAndClose(
+            () => flushPersistedState((phase) => setExitPersistPhase(phase)),
+            async () => {
+              exitAllowDestroyRef.current = true;
+              await getCurrentWindow().destroy();
+            },
+          );
+          if (closeResult === "close-failed") {
             setExitPersistPhase(null);
             exitCloseInFlightRef.current = false;
-            await getCurrentWindow().destroy();
+            exitAllowDestroyRef.current = false;
+            setRuntimeError(
+              "Mach could not close the window. Try again or force-quit from the OS task manager.",
+            );
           }
         });
       } catch (error) {
@@ -960,6 +971,7 @@ function App() {
           pendingOutputRef.current[event.session_id] = [];
         }
         pendingOutputRef.current[event.session_id].push(event.data);
+        setSessionLastOutputAt((current) => ({ ...current, [event.session_id]: Date.now() }));
 
         if (rafFlushRef.current === null) {
           rafFlushRef.current = window.requestAnimationFrame(flushPendingOutput);
@@ -1276,6 +1288,22 @@ function App() {
       resizeThrottleRef.current = nextThrottle;
     }
     setSessionUiSurface((current) => {
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+    setSessionLastOutputAt((current) => {
+      if (!(sessionId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+    setSessionOsc133Hints((current) => {
+      if (!(sessionId in current)) {
+        return current;
+      }
       const next = { ...current };
       delete next[sessionId];
       return next;
@@ -1893,6 +1921,9 @@ function App() {
         {runtimeError ? (
           <div className="runtime-error-strip" role="status">
             <span>{runtimeError}</span>
+            <button type="button" className="inline-btn ghost" onClick={() => setRuntimeError(null)}>
+              Dismiss
+            </button>
             <button type="button" className="inline-btn ghost" onClick={() => openSettings()}>
               Open settings
             </button>
@@ -1918,6 +1949,7 @@ function App() {
             sessionInputModes={sessionInputModes}
             composerSubmitKinds={composerSubmitKinds}
             sessionCommandFailures={sessionCommandFailures}
+            sessionLastOutputAt={sessionLastOutputAt}
             aiAssistEnabled={aiAssistEnabled}
             onComposerDraftChange={(paneId, draft) => {
               if (paneId === workspace.activePaneId) {
