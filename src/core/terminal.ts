@@ -11,6 +11,8 @@ export type SessionStatus = "idle" | "starting" | "running" | "stopped" | "close
 
 export interface TerminalProfile {
   shell?: string;
+  /** Args passed to the shell exe on spawn (e.g. `["-d", "Ubuntu"]` for wsl.exe). */
+  args?: string[];
   cwd?: string;
   env: Record<string, string>;
   font_size: number;
@@ -22,10 +24,24 @@ export interface TerminalProfile {
 
 export interface ProfilePatch {
   shell?: string | null;
+  /** Replaces args wholesale; omit for no change. */
+  args?: string[];
   cwd?: string | null;
   font_size?: number;
   minimal_shell_prompt?: boolean;
   show_composer_assist_metrics?: boolean;
+}
+
+/** A shell the backend detected (or a known default) for the profile picker. */
+export interface ShellCandidate {
+  id: string;
+  label: string;
+  shell: string;
+  args: string[];
+  /** Coarse grouping: `native` | `wsl` | `posix`. */
+  kind: string;
+  available: boolean;
+  is_default: boolean;
 }
 
 export interface PtySpawnRequest {
@@ -102,6 +118,8 @@ export interface ProviderRoutingSettings {
   anthropic_model: string;
   custom_openai_model: string;
   ai_feature_enabled: boolean;
+  system_prompt: string;
+  ai_context_budget_chars: number;
 }
 
 export interface ProviderRoutingPatch {
@@ -111,6 +129,8 @@ export interface ProviderRoutingPatch {
   anthropic_model?: string;
   custom_openai_model?: string;
   ai_feature_enabled?: boolean;
+  system_prompt?: string;
+  ai_context_budget_chars?: number;
 }
 
 export interface ProviderApiKeyStatus {
@@ -137,6 +157,25 @@ export interface AiPromptContextPayload {
   output_excerpt?: string | null;
 }
 
+export interface AiChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AiProviderMessage {
+  role: "user" | "assistant" | "tool" | "system";
+  content?: string | null;
+  tool_call_id?: string;
+  name?: string;
+  tool_calls?: AiToolCall[];
+}
+
 export type AiExecuteIntent = "freeform" | "explain_command" | "fix_command";
 
 export interface AiExecuteRequest {
@@ -145,6 +184,12 @@ export interface AiExecuteRequest {
   provider_id?: string;
   intent?: AiExecuteIntent;
   context?: AiPromptContextPayload;
+  /** Prior turns; current `prompt` is the latest user message. */
+  history?: AiChatTurn[];
+  enable_tools?: boolean;
+  use_provider_messages?: boolean;
+  provider_messages?: AiProviderMessage[];
+  tools?: unknown;
 }
 
 /** Match backend `MAX_CONTEXT_EXCERPT_CHARS` when slicing session scrollback for `output_excerpt`. */
@@ -161,6 +206,96 @@ export function trimAiContextExcerpt(text: string | undefined | null, max = AI_C
 export interface AiExecuteResponse {
   provider_id: string;
   output: string;
+  tool_calls?: AiToolCall[];
+  finish_reason?: string;
+}
+
+/** Wire DTO for `ai_execute` (Rust `#[serde(rename_all = "camelCase")]`). */
+export type AiExecuteRequestWire = {
+  sessionId: string;
+  prompt: string;
+  providerId?: string;
+  intent?: AiExecuteIntent;
+  context?: {
+    cwd?: string | null;
+    shell?: string | null;
+    gitBranch?: string | null;
+    commandText?: string | null;
+    outputExcerpt?: string | null;
+  };
+  history?: AiChatTurn[];
+  enableTools?: boolean;
+  useProviderMessages?: boolean;
+  providerMessages?: AiProviderMessageWire[];
+  tools?: unknown;
+};
+
+type AiProviderMessageWire = {
+  role: AiProviderMessage["role"];
+  content?: string | null;
+  toolCallId?: string;
+  name?: string;
+  toolCalls?: AiToolCall[];
+};
+
+type AiExecuteResponseWire = {
+  providerId: string;
+  output: string;
+  toolCalls?: AiToolCall[];
+  finishReason?: string;
+};
+
+export function aiExecuteRequestToWire(request: AiExecuteRequest): AiExecuteRequestWire {
+  const wire: AiExecuteRequestWire = {
+    sessionId: request.session_id,
+    prompt: request.prompt,
+  };
+  if (request.provider_id != null) {
+    wire.providerId = request.provider_id;
+  }
+  if (request.intent != null) {
+    wire.intent = request.intent;
+  }
+  if (request.context != null) {
+    wire.context = {
+      cwd: request.context.cwd,
+      shell: request.context.shell,
+      gitBranch: request.context.git_branch,
+      commandText: request.context.command_text,
+      outputExcerpt: request.context.output_excerpt,
+    };
+  }
+  if (request.history != null) {
+    wire.history = request.history;
+  }
+  if (request.enable_tools != null) {
+    wire.enableTools = request.enable_tools;
+  }
+  if (request.use_provider_messages != null) {
+    wire.useProviderMessages = request.use_provider_messages;
+  }
+  if (request.provider_messages != null) {
+    wire.providerMessages = request.provider_messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      toolCallId: message.tool_call_id,
+      name: message.name,
+      toolCalls: message.tool_calls,
+    }));
+  }
+  if (request.tools != null) {
+    wire.tools = request.tools;
+  }
+  return wire;
+}
+
+export function aiExecuteResponseFromWire(response: AiExecuteResponseWire): AiExecuteResponse {
+  return {
+    provider_id: response.providerId,
+    output: response.output,
+    tool_calls: response.toolCalls,
+    finish_reason: response.finishReason,
+  };
 }
 
 export interface HistoryEntry {
@@ -275,6 +410,10 @@ export interface PluginGrantSnapshot {
 
 export async function runtimeCapabilities() {
   return invoke("runtime_capabilities");
+}
+
+export async function detectShells() {
+  return invoke<ShellCandidate[]>("detect_shells");
 }
 
 export async function profileGet() {
@@ -515,7 +654,10 @@ export async function pluginGrantsSnapshot() {
 }
 
 export async function aiExecute(request: AiExecuteRequest) {
-  return invoke<AiExecuteResponse>("ai_execute", { request });
+  const response = await invoke<AiExecuteResponseWire>("ai_execute", {
+    request: aiExecuteRequestToWire(request),
+  });
+  return aiExecuteResponseFromWire(response);
 }
 
 export function onPtyOutput(handler: (event: PtyOutputEvent) => void): Promise<UnlistenFn> {

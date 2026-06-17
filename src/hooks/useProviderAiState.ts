@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   aiErrorStatusMessage,
+  aiAssistNotReadyStatus,
   aiPromptPendingStatus,
   aiPromptReadyStatus,
   aiRoutingOptInStatus,
+  isAiAssistReady,
   isExecutableProvider,
   providerApiKeyClearedStatus,
   providerApiKeyRequiredStatus,
@@ -24,12 +26,26 @@ import {
   providerRoutingSet,
   providerSetEnabled,
   trimAiContextExcerpt,
+  type AiChatTurn,
   type AiContextEvent,
   type AiExecuteIntent,
   type AiPromptContextPayload,
   type ProviderRoutingSettings,
   type PtySessionInfo,
 } from "../core/terminal";
+import { DEFAULT_AI_CONTEXT_BUDGET_CHARS } from "../core/aiContextBudget";
+import { messageFromUnknownError } from "../core/errors";
+import { buildToolUserMessage, type AiToolContext } from "../core/aiTools";
+import { executeAiWithTools } from "../core/aiToolRunner";
+
+export type RunAiPromptOptions = {
+  /** Target session (defaults to active session). */
+  sessionId?: string;
+  contextExtras?: Partial<AiPromptContextPayload>;
+  history?: AiChatTurn[];
+  onSuccess?: (output: string) => void;
+  onError?: (message: string) => void;
+};
 
 type RoutingDraft = {
   default_provider: string;
@@ -37,6 +53,8 @@ type RoutingDraft = {
   openai_model: string;
   anthropic_model: string;
   custom_openai_model: string;
+  system_prompt: string;
+  ai_context_budget_chars: number;
 };
 
 /**
@@ -87,6 +105,17 @@ interface UseProviderAiStateParams {
   onHistoryActionStatus: (status: string) => void;
   /** Optional cwd/shell/scrollback tail assembled by the host (e.g. App.tsx). */
   buildAiPromptContext?: () => AiPromptContextPayload | undefined;
+  /** Ops-rail run ledger + scrollback for read-only AI tools. */
+  buildAiToolContext?: (sessionId: string) => AiToolContext;
+  /** When true, eligible providers run the read-only tool loop for chat prompts. */
+  enableAiTools?: boolean;
+  /** Fired after any successful AI execution (composer, explain, fix, settings prompt). */
+  onAiAssistantReply?: (payload: {
+    prompt: string;
+    output: string;
+    intent: AiExecuteIntent;
+    sessionId?: string;
+  }) => void;
 }
 
 export type HistoryAiAction = "explain" | "fix";
@@ -139,6 +168,9 @@ export function useProviderAiState({
   onRuntimeError,
   onHistoryActionStatus,
   buildAiPromptContext,
+  buildAiToolContext,
+  enableAiTools = false,
+  onAiAssistantReply,
 }: UseProviderAiStateParams) {
   const [providers, setProviders] = useState<ProviderDescriptor[]>(PROVIDER_REGISTRY);
   const [routing, setRouting] = useState<ProviderRoutingSettings>({
@@ -148,6 +180,8 @@ export function useProviderAiState({
     anthropic_model: "claude-3-5-haiku-latest",
     custom_openai_model: "gpt-4o-mini",
     ai_feature_enabled: false,
+    system_prompt: "",
+    ai_context_budget_chars: DEFAULT_AI_CONTEXT_BUDGET_CHARS,
   });
   const [routingDraft, setRoutingDraft] = useState<RoutingDraft>({
     default_provider: "ollama",
@@ -155,6 +189,8 @@ export function useProviderAiState({
     openai_model: "gpt-4o-mini",
     anthropic_model: "claude-3-5-haiku-latest",
     custom_openai_model: "gpt-4o-mini",
+    system_prompt: "",
+    ai_context_budget_chars: DEFAULT_AI_CONTEXT_BUDGET_CHARS,
   });
   const [providerApiKeyDrafts, setProviderApiKeyDrafts] = useState<Record<string, string>>({});
   const [providerEndpointDrafts, setProviderEndpointDrafts] = useState<Record<string, string>>({});
@@ -196,6 +232,8 @@ export function useProviderAiState({
         openai_model: providerRouting.openai_model,
         anthropic_model: providerRouting.anthropic_model,
         custom_openai_model: providerRouting.custom_openai_model,
+        system_prompt: providerRouting.system_prompt ?? "",
+        ai_context_budget_chars: providerRouting.ai_context_budget_chars ?? DEFAULT_AI_CONTEXT_BUDGET_CHARS,
       });
       setProviderEndpointDrafts(endpointDraftsFromProviders(providerDescriptors));
     },
@@ -284,6 +322,8 @@ export function useProviderAiState({
         openai_model: routingDraft.openai_model,
         anthropic_model: routingDraft.anthropic_model,
         custom_openai_model: routingDraft.custom_openai_model,
+        system_prompt: routingDraft.system_prompt,
+        ai_context_budget_chars: routingDraft.ai_context_budget_chars,
       });
       setRouting(updated);
       setRoutingDraft({
@@ -292,6 +332,8 @@ export function useProviderAiState({
         openai_model: updated.openai_model,
         anthropic_model: updated.anthropic_model,
         custom_openai_model: updated.custom_openai_model,
+        system_prompt: updated.system_prompt ?? "",
+        ai_context_budget_chars: updated.ai_context_budget_chars ?? DEFAULT_AI_CONTEXT_BUDGET_CHARS,
       });
       setProviderConfigStatus(providerRoutingSavedStatus());
     } catch (error) {
@@ -304,6 +346,8 @@ export function useProviderAiState({
     routingDraft.default_provider,
     routingDraft.ollama_model,
     routingDraft.openai_model,
+    routingDraft.system_prompt,
+    routingDraft.ai_context_budget_chars,
   ]);
 
   const setAiOptIn = useCallback(async (enabled: boolean) => {
@@ -315,6 +359,8 @@ export function useProviderAiState({
         openai_model: routingDraft.openai_model,
         anthropic_model: routingDraft.anthropic_model,
         custom_openai_model: routingDraft.custom_openai_model,
+        system_prompt: routingDraft.system_prompt,
+        ai_context_budget_chars: routingDraft.ai_context_budget_chars,
         ai_feature_enabled: enabled,
       });
       setRouting(updated);
@@ -324,6 +370,8 @@ export function useProviderAiState({
         openai_model: updated.openai_model,
         anthropic_model: updated.anthropic_model,
         custom_openai_model: updated.custom_openai_model,
+        system_prompt: updated.system_prompt ?? "",
+        ai_context_budget_chars: updated.ai_context_budget_chars ?? DEFAULT_AI_CONTEXT_BUDGET_CHARS,
       });
       setProviderConfigStatus(aiRoutingOptInStatus(enabled));
     } catch (error) {
@@ -365,11 +413,12 @@ export function useProviderAiState({
       }
       setAiResponse(response.output);
       setAiRequestStatus(aiPromptReadyStatus());
+      onAiAssistantReply?.({ prompt: aiPrompt, output: response.output, intent: "freeform" });
     } catch (error) {
       if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         return;
       }
-      const message = error instanceof Error ? error.message : "AI execution failed.";
+      const message = messageFromUnknownError(error, "AI execution failed.");
       setAiResponse(null);
       onRuntimeError(message);
       setAiRequestStatus(aiErrorStatusMessage(message));
@@ -378,14 +427,87 @@ export function useProviderAiState({
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, aiPrompt, buildAiPromptContext, onRuntimeError, routing.default_provider]);
+  }, [activeSession, aiPrompt, buildAiPromptContext, onAiAssistantReply, onRuntimeError, routing.default_provider]);
+
+  const runAiPromptWithText = useCallback(
+    async (promptText: string, options: RunAiPromptOptions = {}) => {
+      const targetSessionId = options.sessionId ?? activeSession?.id;
+      if (!targetSessionId) {
+        onRuntimeError("No active session selected for AI prompt.");
+        return;
+      }
+      const trimmed = promptText.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      if (!isExecutableProvider(routing.default_provider)) {
+        setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
+        return;
+      }
+      const requestId = nextAiRequestId(latestAiRequestRef.current);
+      latestAiRequestRef.current = requestId;
+      setAiRequestInFlight(true);
+      setAiRequestStatus(aiPromptPendingStatus());
+      setAiPrompt(trimmed);
+      try {
+        const context = composeAiContext(buildAiPromptContext, options.contextExtras);
+        const userMessageBody = buildToolUserMessage(trimmed, context);
+        const toolContext = buildAiToolContext?.(targetSessionId) ?? {
+          sessionId: targetSessionId,
+          runLedger: {},
+          sessionBuffers: {},
+        };
+        const baseRequest = {
+          session_id: targetSessionId,
+          prompt: trimmed,
+          provider_id: routing.default_provider,
+          intent: "freeform" as const satisfies AiExecuteIntent,
+          context,
+          history: options.history,
+        };
+        const response = await executeAiWithTools(baseRequest, {
+          enabled: enableAiTools,
+          providerId: routing.default_provider,
+          toolContext,
+          userMessageBody,
+          execute: aiExecute,
+        });
+        if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
+          return;
+        }
+        setAiResponse(response.output);
+        setAiRequestStatus(aiPromptReadyStatus());
+        onAiAssistantReply?.({
+          prompt: trimmed,
+          output: response.output,
+          intent: "freeform",
+          sessionId: targetSessionId,
+        });
+        options.onSuccess?.(response.output);
+      } catch (error) {
+        if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
+          return;
+        }
+        const message = messageFromUnknownError(error, "AI execution failed.");
+        setAiResponse(null);
+        onRuntimeError(message);
+        setAiRequestStatus(aiErrorStatusMessage(message));
+        options.onError?.(message);
+      } finally {
+        if (shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
+          setAiRequestInFlight(false);
+        }
+      }
+    },
+    [activeSession, buildAiPromptContext, buildAiToolContext, enableAiTools, onAiAssistantReply, onRuntimeError, routing.default_provider],
+  );
 
   const explainCommand = useCallback(async (command: string) => {
     if (!activeSession) {
       return;
     }
-    if (!isExecutableProvider(routing.default_provider)) {
-      setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
+    if (!isAiAssistReady(routing.ai_feature_enabled, routing.default_provider, providers)) {
+      setAiRequestStatus(aiAssistNotReadyStatus());
       return;
     }
     const requestId = nextAiRequestId(latestAiRequestRef.current);
@@ -409,11 +531,12 @@ export function useProviderAiState({
       setAiResponse(response.output);
       onHistoryActionStatus(contract.successStatus);
       setAiRequestStatus(contract.successStatus);
+      onAiAssistantReply?.({ prompt, output: response.output, intent: contract.intent });
     } catch (error) {
       if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         return;
       }
-      const message = error instanceof Error ? error.message : contract.fallbackErrorMessage;
+      const message = messageFromUnknownError(error, contract.fallbackErrorMessage);
       onRuntimeError(message);
       onHistoryActionStatus(contract.historyFailureStatus);
       setAiRequestStatus(aiErrorStatusMessage(message));
@@ -422,14 +545,14 @@ export function useProviderAiState({
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, providers, routing.ai_feature_enabled, routing.default_provider]);
 
   const fixCommand = useCallback(async (command: string) => {
     if (!activeSession) {
       return;
     }
-    if (!isExecutableProvider(routing.default_provider)) {
-      setAiRequestStatus(providerUnavailableStatus(routing.default_provider));
+    if (!isAiAssistReady(routing.ai_feature_enabled, routing.default_provider, providers)) {
+      setAiRequestStatus(aiAssistNotReadyStatus());
       return;
     }
     const requestId = nextAiRequestId(latestAiRequestRef.current);
@@ -453,11 +576,12 @@ export function useProviderAiState({
       setAiResponse(response.output);
       onHistoryActionStatus(contract.successStatus);
       setAiRequestStatus(contract.successStatus);
+      onAiAssistantReply?.({ prompt, output: response.output, intent: contract.intent });
     } catch (error) {
       if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         return;
       }
-      const message = error instanceof Error ? error.message : contract.fallbackErrorMessage;
+      const message = messageFromUnknownError(error, contract.fallbackErrorMessage);
       onRuntimeError(message);
       onHistoryActionStatus(contract.historyFailureStatus);
       setAiRequestStatus(aiErrorStatusMessage(message));
@@ -466,7 +590,7 @@ export function useProviderAiState({
         setAiRequestInFlight(false);
       }
     }
-  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, routing.default_provider]);
+  }, [activeSession, buildAiPromptContext, onHistoryActionStatus, onRuntimeError, providers, routing.ai_feature_enabled, routing.default_provider]);
 
   return {
     providers,
@@ -493,6 +617,7 @@ export function useProviderAiState({
     saveRoutingConfig,
     setAiOptIn,
     runAiPrompt,
+    runAiPromptWithText,
     explainCommand,
     fixCommand,
   };
