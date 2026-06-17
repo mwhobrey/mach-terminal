@@ -51,6 +51,77 @@ export function collectExitedSessionIds(
 }
 
 /**
+ * Short, meaningful tab label derived from the shell path. Tabs live in the
+ * compact titlebar now, so we drop the full executable path + status word and
+ * show just the shell name: the last path segment (handles both `\\` and `/`)
+ * with a trailing `.exe` stripped, lowercased. Full session/shell/status detail
+ * still lives in the tab's `title`/`aria-label` tooltip (`buildTabTooltip`).
+ */
+export function tabShortLabel(shell: string): string {
+  const trimmed = (shell ?? "").trim();
+  if (trimmed.length === 0) {
+    return "shell";
+  }
+  const base = trimmed.split(/[\\/]/).pop() ?? trimmed;
+  const noExt = base.replace(/\.exe$/i, "");
+  return (noExt || base).toLowerCase();
+}
+
+/** Minimal session shape the label builder needs. */
+export interface TabLabelSession {
+  id: string;
+  shell: string;
+}
+
+function customName(names: Record<string, string | undefined>, id: string): string {
+  return (names[id] ?? "").trim();
+}
+
+/**
+ * Compute the display label for every tab.
+ *
+ * - A user-set custom name always wins.
+ * - Otherwise the label is the short shell name (`tabShortLabel`). When two or
+ *   more *uncustomized* tabs share that short name we append a 1-based ordinal
+ *   in left-to-right order ("wsl 1", "wsl 2"); a lone uncustomized tab stays
+ *   bare ("wsl"). Custom-named siblings are excluded from the count so renaming
+ *   one tab doesn't spuriously number the rest.
+ */
+export function buildTabLabels(
+  sessions: readonly TabLabelSession[],
+  names: Record<string, string | undefined>,
+): Record<string, string> {
+  const bases = sessions.map((session) => tabShortLabel(session.shell));
+  const uncustomizedPerBase = new Map<string, number>();
+  sessions.forEach((session, index) => {
+    if (customName(names, session.id).length > 0) {
+      return;
+    }
+    const base = bases[index];
+    uncustomizedPerBase.set(base, (uncustomizedPerBase.get(base) ?? 0) + 1);
+  });
+
+  const ordinalCounters = new Map<string, number>();
+  const labels: Record<string, string> = {};
+  sessions.forEach((session, index) => {
+    const custom = customName(names, session.id);
+    if (custom.length > 0) {
+      labels[session.id] = custom;
+      return;
+    }
+    const base = bases[index];
+    if ((uncustomizedPerBase.get(base) ?? 0) >= 2) {
+      const ordinal = (ordinalCounters.get(base) ?? 0) + 1;
+      ordinalCounters.set(base, ordinal);
+      labels[session.id] = `${base} ${ordinal}`;
+    } else {
+      labels[session.id] = base;
+    }
+  });
+  return labels;
+}
+
+/**
  * Narrow type guard so JSX branches in TabBar can pattern-match on
  * `{ status, exited }` pairs without repeating the `isTerminalStatus`
  * check plus an `!= null` on the map lookup.

@@ -15,6 +15,50 @@ export function canRunAiRequest(aiOptInEnabled: boolean, requestInFlight: boolea
   return aiOptInEnabled && !requestInFlight;
 }
 
+/** Cloud/custom adapters require a stored key before the backend will execute. */
+export function providerRequiresApiKey(providerId: string): boolean {
+  return providerId === "openai" || providerId === "anthropic" || providerId === "custom-openai";
+}
+
+/**
+ * True when a provider row is enabled, executable, and has credentials when required.
+ * Ollama is ready when enabled; cloud providers need a stored API key.
+ */
+export function isProviderConfiguredForAi(
+  provider: Pick<ProviderCardInput, "id" | "enabled" | "hasStoredKey">,
+): boolean {
+  if (!isExecutableProvider(provider.id) || !provider.enabled) {
+    return false;
+  }
+  if (providerRequiresApiKey(provider.id)) {
+    return provider.hasStoredKey === true;
+  }
+  return true;
+}
+
+/**
+ * AI assist surfaces (Explain, Safer, chat, ops-rail AI) are ready only when routing
+ * opt-in is on and the default provider is enabled and configured.
+ */
+export function isAiAssistReady(
+  aiFeatureEnabled: boolean,
+  defaultProviderId: string,
+  providers: readonly Pick<ProviderCardInput, "id" | "enabled" | "hasStoredKey">[],
+): boolean {
+  if (!aiFeatureEnabled || !isExecutableProvider(defaultProviderId)) {
+    return false;
+  }
+  const defaultProvider = providers.find((provider) => provider.id === defaultProviderId);
+  if (!defaultProvider) {
+    return false;
+  }
+  return isProviderConfiguredForAi(defaultProvider);
+}
+
+export function aiAssistNotReadyStatus(): string {
+  return "Configure and enable an AI provider in settings first.";
+}
+
 export function isExecutableProvider(providerId: string): boolean {
   return EXECUTABLE_PROVIDER_IDS.has(providerId);
 }
@@ -29,6 +73,82 @@ export function providerUnavailableStatus(providerId: string): string {
 
 export function providerOptionSuffix(executable: boolean): string {
   return executable ? "" : " (unavailable)";
+}
+
+/** Routing keys that hold the per-provider model id. */
+export type RoutingModelKey = "openai_model" | "anthropic_model" | "ollama_model" | "custom_openai_model";
+
+/** Maps a provider id to the routing draft field that holds its model, or null when it has none. */
+export function providerModelRoutingKey(providerId: string): RoutingModelKey | null {
+  switch (providerId) {
+    case "openai":
+      return "openai_model";
+    case "anthropic":
+      return "anthropic_model";
+    case "ollama":
+      return "ollama_model";
+    case "custom-openai":
+      return "custom_openai_model";
+    default:
+      return null;
+  }
+}
+
+/** Minimal provider shape the card view-model needs (a structural subset of ProviderDescriptor). */
+export interface ProviderCardInput {
+  id: string;
+  name: string;
+  kind: string;
+  status: string;
+  enabled: boolean;
+  envHint?: string;
+  hasStoredKey?: boolean;
+}
+
+/** Canonical, presentation-ready provider row shared by every provider surface. */
+export interface ProviderCardModel {
+  id: string;
+  name: string;
+  kind: string;
+  executable: boolean;
+  enabled: boolean;
+  statusLabel: string;
+  isDefault: boolean;
+  modelKey: RoutingModelKey | null;
+  authLabel: string;
+}
+
+/** Short, single-source status word for a provider row. */
+export function providerStatusLabel(provider: Pick<ProviderCardInput, "id" | "status" | "enabled">): string {
+  if (!isExecutableProvider(provider.id)) {
+    return "unavailable";
+  }
+  return provider.enabled ? "enabled" : provider.status;
+}
+
+/** One canonical sentence describing where a provider's credentials live. */
+export function providerAuthLabel(provider: Pick<ProviderCardInput, "hasStoredKey" | "envHint">): string {
+  const base = provider.hasStoredKey ? "Key stored in secure keychain" : "No stored key";
+  return provider.envHint ? `${base} · env fallback: ${provider.envHint}` : base;
+}
+
+/**
+ * Single source of truth for provider rows across Settings (and, in time, onboarding).
+ * Folds executable-allowlist, enabled, default-routing, model field, and auth into one
+ * view-model so the same intent renders the same way on every surface.
+ */
+export function buildProviderCards(providers: ProviderCardInput[], defaultProviderId: string): ProviderCardModel[] {
+  return providers.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    kind: provider.kind,
+    executable: isExecutableProvider(provider.id),
+    enabled: provider.enabled,
+    statusLabel: providerStatusLabel(provider),
+    isDefault: provider.id === defaultProviderId,
+    modelKey: providerModelRoutingKey(provider.id),
+    authLabel: providerAuthLabel(provider),
+  }));
 }
 
 export function providerEndpointSavedStatus(providerId: string): string {

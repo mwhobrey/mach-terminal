@@ -7,11 +7,14 @@ export const QUICKSTART_ROUTING: ProviderRoutingSettings = {
   anthropic_model: "claude-3-5-haiku-latest",
   custom_openai_model: "gpt-4o-mini",
   ai_feature_enabled: false,
+  system_prompt: "",
+  ai_context_budget_chars: 28_000,
 };
 
 export function normalizeQuickStartProfile(profile: TerminalProfile): TerminalProfile {
   return {
     shell: profile.shell,
+    args: profile.args ?? [],
     cwd: profile.cwd,
     env: profile.env ?? {},
     font_size: profile.font_size,

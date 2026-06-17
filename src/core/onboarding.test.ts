@@ -10,6 +10,8 @@ describe("onboarding quick-start helpers", () => {
       anthropic_model: "claude-3-5-haiku-latest",
       custom_openai_model: "gpt-4o-mini",
       ai_feature_enabled: false,
+      system_prompt: "",
+      ai_context_budget_chars: 28_000,
     });
   });
 
@@ -31,6 +33,7 @@ describe("onboarding quick-start helpers", () => {
     };
     expect(normalizeQuickStartProfile(profile)).toEqual({
       ...profile,
+      args: [],
       minimal_shell_prompt: false,
       show_composer_assist_metrics: false,
     });

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SessionExitedInfo } from "./sessionLifecycle";
 import {
+  buildTabLabels,
   buildTabTooltip,
   collectExitedSessionIds,
   isExitedTab,
+  tabShortLabel,
 } from "./sessionTabStatus";
 
 function info(partial: Partial<SessionExitedInfo> = {}): SessionExitedInfo {
@@ -111,5 +113,78 @@ describe("isExitedTab", () => {
     } else {
       throw new Error("expected isExitedTab to narrow the info");
     }
+  });
+});
+
+describe("tabShortLabel", () => {
+  it("strips Windows paths and the .exe suffix", () => {
+    expect(tabShortLabel("C:\\WINDOWS\\system32\\wsl.exe")).toBe("wsl");
+    expect(tabShortLabel("C:\\Program Files\\PowerShell\\7\\pwsh.exe")).toBe("pwsh");
+  });
+
+  it("handles POSIX shell paths", () => {
+    expect(tabShortLabel("/usr/bin/bash")).toBe("bash");
+    expect(tabShortLabel("/bin/zsh")).toBe("zsh");
+  });
+
+  it("falls back to a generic label for empty input", () => {
+    expect(tabShortLabel("")).toBe("shell");
+    expect(tabShortLabel("   ")).toBe("shell");
+  });
+
+  it("returns a bare shell name unchanged (lowercased)", () => {
+    expect(tabShortLabel("cmd.exe")).toBe("cmd");
+    expect(tabShortLabel("fish")).toBe("fish");
+  });
+});
+
+describe("buildTabLabels", () => {
+  const wsl = "C:\\WINDOWS\\system32\\wsl.exe";
+  const pwsh = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+
+  it("leaves a lone shell unnumbered", () => {
+    const labels = buildTabLabels([{ id: "s1", shell: wsl }], {});
+    expect(labels).toEqual({ s1: "wsl" });
+  });
+
+  it("numbers shells that share a short name, left to right", () => {
+    const labels = buildTabLabels(
+      [
+        { id: "s1", shell: wsl },
+        { id: "s2", shell: wsl },
+        { id: "s3", shell: pwsh },
+      ],
+      {},
+    );
+    expect(labels).toEqual({ s1: "wsl 1", s2: "wsl 2", s3: "pwsh" });
+  });
+
+  it("lets a custom name win and excludes it from sibling numbering", () => {
+    const labels = buildTabLabels(
+      [
+        { id: "s1", shell: wsl },
+        { id: "s2", shell: wsl },
+      ],
+      { s1: "build" },
+    );
+    // s2 is now the only uncustomized wsl, so it stays bare.
+    expect(labels).toEqual({ s1: "build", s2: "wsl" });
+  });
+
+  it("still numbers the remaining uncustomized siblings when 2+ remain", () => {
+    const labels = buildTabLabels(
+      [
+        { id: "s1", shell: wsl },
+        { id: "s2", shell: wsl },
+        { id: "s3", shell: wsl },
+      ],
+      { s2: "deploy" },
+    );
+    expect(labels).toEqual({ s1: "wsl 1", s2: "deploy", s3: "wsl 2" });
+  });
+
+  it("treats whitespace-only custom names as unset", () => {
+    const labels = buildTabLabels([{ id: "s1", shell: wsl }], { s1: "   " });
+    expect(labels).toEqual({ s1: "wsl" });
   });
 });
