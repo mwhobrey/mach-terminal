@@ -1,0 +1,64 @@
+# Mach Terminal — Agent Operating Rules
+
+## 1. ALWAYS consult the Master Runbook FIRST
+
+A federated runbook lives in `.cursor/runbook/`. Before planning or editing anything,
+read `.cursor/runbook/00_INDEX.md`, then load ONLY the file(s) relevant to your task
+(do not read all of them — that wastes context):
+
+| If your task involves... | Read |
+| --- | --- |
+| Orientation / "what is this project" / North Star | `00_INDEX.md` |
+| Tech stack, data flow, IPC, system patterns, external APIs | `01_ARCHITECTURE.md` |
+| Where code lives, module responsibilities, routing, config, state location | `02_COMPONENTS_AND_FILES.md` |
+| Coding conventions, error handling, state rules, testing/CI, gotchas | `03_RULES_AND_STANDARDS.md` |
+| What works/broken, backlog, next steps, pre-commit verification | `04_CURRENT_STATE.md` |
+
+Treat the runbook as authoritative for *how this repo is built and why*. When the runbook
+conflicts with an assumption, the runbook wins; if the runbook conflicts with the actual
+code, the code wins — and you must fix the runbook (see §3).
+
+## 2. Respect the non-negotiables (full detail in `03_RULES_AND_STANDARDS.md`)
+
+- Core terminal must work with AI/providers disabled. AI is optional, never a dependency.
+- All backend access goes through the `src/core/terminal.ts` bridge. Keep `models.rs`
+  (Rust DTOs) and `terminal.ts` (TS types) in lockstep.
+- Cross-boundary changes require the full checklist: module → `#[tauri::command]` →
+  `generate_handler![]` registry → `models.rs` DTO → `terminal.ts` wrapper → consumer → tests.
+- Backend commands return `Result<_, String>` with user-facing messages; frontend wraps every
+  invoke in try/catch. Fail gracefully, recover from corruption, never silently reset.
+- Prefer pure helpers in `src/core/*` / `src/state/*` with colocated tests over logic in React.
+- Prune every per-session `Record<sessionId,...>` when sessions die.
+
+## 3. ALWAYS update the Runbook BEFORE you commit
+
+The runbook is the durable handoff for the next agent/developer. Keeping it current is part of
+"done", not an afterthought.
+
+Before creating any git commit, in the SAME change:
+1. Update the runbook file(s) affected by your work:
+   - new/changed architecture, data flow, or external dep → `01_ARCHITECTURE.md`
+   - new/moved/renamed modules or responsibilities → `02_COMPONENTS_AND_FILES.md`
+   - new conventions, gotchas, or tech debt → `03_RULES_AND_STANDARDS.md`
+   - anything shipped/broken/unblocked or a changed next step → `04_CURRENT_STATE.md`
+   - changed scope/summary/North Star → `00_INDEX.md`
+2. Keep entries concise, bullet-driven, and grounded in the actual code you changed.
+3. If nothing in the runbook is affected, state that explicitly in your summary — do not pad it.
+4. Mirror material changes into the upstream truth sources where appropriate
+   (`docs/continuation-handoff.md`, `CHANGELOG.md`) per existing repo practice.
+
+## 4. Verify before committing
+
+Run the gate from `04_CURRENT_STATE.md`:
+`npm run test:types && npm run test:ux && npm run test:ux:smoke && cargo test --manifest-path src-tauri/Cargo.toml`
+(plus `npm run test:invoke:smoke && npm run test:invoke:strict` if touching invoke transport).
+
+## 5. Commit message format
+
+`[TICKET] :gitmoji: type(scope): summary` — gitmoji per https://gitmoji.dev, optional bullet
+body as `* :gitmoji: ...`, NO commit trailers (no Co-authored-by / Signed-off-by). Omit the
+`[TICKET]` prefix if none is provided.
+
+> Note: `.cursor/` is currently in `.gitignore`. If the runbook should be version-controlled and
+> shared (so this update-before-commit rule actually propagates), add `!.cursor/runbook/` to
+> `.gitignore`. `.cursorrules` itself is tracked.
