@@ -25,6 +25,11 @@ dist-ssr
 artifacts/
 .aider*
 .cursor/
+# Local updater signing keys — NEVER commit
+.machbox/
+**/*.key
+**/*.key.pub
+
 # Maintainer-only agent handoff (not shipped in public OSS)
 docs/continuation-handoff.md
 

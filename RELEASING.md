@@ -50,19 +50,32 @@ Local dry run (`npm run release:dry-run`) hashes debug-bundle outputs into `arti
 
 ## Required GitHub Secrets
 
-- `TAURI_SIGNING_PRIVATE_KEY`
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- `UPDATER_PUBLIC_KEY`
-- `APPLE_CERTIFICATE`
-- `APPLE_CERTIFICATE_PASSWORD`
-- `APPLE_SIGNING_IDENTITY`
-- `APPLE_ID`
-- `APPLE_PASSWORD`
-- `APPLE_TEAM_ID`
-- `WINDOWS_CERTIFICATE`
-- `WINDOWS_CERTIFICATE_PASSWORD`
+### Tier 1 — Updater signing (required for stable tags)
 
-If signing credentials are unavailable for a platform, release workflow will still build artifacts but will skip the signing step for that platform.
+Set up from scratch: **[`docs/signing-setup.md`](signing-setup.md)** (run `.\scripts\setup-release-signing.ps1`).
+
+| Secret | Purpose |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Minisign private key (full file contents) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Key encryption password |
+| `UPDATER_PUBLIC_KEY` | Minisign public key (full `.pub` file contents) |
+
+Stable tag CI **fails** if `TAURI_SIGNING_PRIVATE_KEY` or `UPDATER_PUBLIC_KEY` is missing.
+
+### Tier 2 — OS code signing (optional; polish, not blocker)
+
+| Secret | Platform |
+| --- | --- |
+| `APPLE_CERTIFICATE` | macOS — base64 `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | macOS |
+| `APPLE_SIGNING_IDENTITY` | macOS |
+| `APPLE_ID` | macOS notarization |
+| `APPLE_PASSWORD` | macOS — app-specific password |
+| `APPLE_TEAM_ID` | macOS |
+| `WINDOWS_CERTIFICATE` | Windows — base64 `.pfx` |
+| `WINDOWS_CERTIFICATE_PASSWORD` | Windows |
+
+If OS signing credentials are unavailable, release workflow still builds artifacts but installers may show SmartScreen / Gatekeeper warnings until certs are added.
 
 ## Release Execution (stable)
 

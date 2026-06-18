@@ -1,71 +1,51 @@
 # OSS flip day — runbook
 
-> Execute when `machbox.dev` site + email are ready and the OSS prep commit is on `main`.
 > Mach Cloud stays out of scope.
 
-**Current state (update before you run this):**
+## Current state (2026-06-18)
 
 | Item | Status |
 | --- | --- |
 | Domain `machbox.dev` | Registered |
 | Org `MachBox-Dev` + profile README | Done |
-| Site / logos | In progress (Mike) |
-| Repo remote | `mwhobrey/mach-terminal` (private) — **not yet on org** |
-| OSS prep commit | Ready to push on `main` |
+| Site / logos | In progress |
+| **`MachBox-Dev/mach-terminal`** | **Public** |
+| Security Advisories | Enabled |
+| Local `origin` remote | `git@github.com:MachBox-Dev/mach-terminal.git` |
+| OSS prep on `main` | Pushed (`95eb026`) |
+| Actions secrets on org repo | Tier 1 via `setup-release-signing.ps1` (user-run) |
+| First org release tag | Pending green CI + secrets |
 
 ---
 
-## Phase A — Repo (you, ~20 min)
+## Completed — Phase A
 
-### A1. Commit and push OSS prep to `main`
+- A1 OSS prep committed and pushed
+- A2 Transfer to `MachBox-Dev`
+- A3 Public visibility
+- A5 Security Advisories enabled
 
-From `mach-terminal` locally:
+### A4. Updater signing secrets (Tier 1 — required)
 
-```bash
-npm run test:types
-npm run test:ux
-npm run test:ux:smoke
-cargo test --manifest-path src-tauri/Cargo.toml
-npm run security:gitleaks
+**Never set before.** Run from repo root:
+
+```powershell
+.\scripts\setup-release-signing.ps1
 ```
 
-Then commit the OSS batch (governance docs, `oss-prep`, gitleaks CI, updater decoupling,
-`continuation-handoff` untracked, `private: false`).
+Full guide: [`docs/signing-setup.md`](signing-setup.md). Creates three secrets:
 
-### A2. Transfer to the org
-
-GitHub → `mwhobrey/mach-terminal` → **Settings** → **General** → **Transfer ownership**
-
-- New owner: **`MachBox-Dev`**
-- Confirm repo name stays **`mach-terminal`**
-- You must be org owner
-
-After transfer:
-
-```bash
-git remote set-url origin git@github.com:MachBox-Dev/mach-terminal.git
-git remote -v
-```
-
-### A3. Make public
-
-`MachBox-Dev/mach-terminal` → **Settings** → **General** → **Danger zone** → **Change visibility** → **Public**
-
-### A4. Re-add secrets (they do not transfer)
-
-Org repo → **Settings** → **Secrets and variables** → **Actions**
-
-| Secret | Required for |
+| Secret | Purpose |
 | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | Signed releases |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Signing |
-| `UPDATER_PUBLIC_KEY` | Updater manifest |
-| `APPLE_*` | macOS signing (if used) |
-| `WINDOWS_*` | Windows signing (if used) |
+| `TAURI_SIGNING_PRIVATE_KEY` | Signs update bundles |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Key password |
+| `UPDATER_PUBLIC_KEY` | Embedded in release builds for updater verification |
 
-### A5. Enable Security Advisories
+Verify: `gh secret list --repo MachBox-Dev/mach-terminal`
 
-**Settings** → **Security** → **Private vulnerability reporting** / **GitHub Advisory** — enable for the public repo.
+### A4b. OS code signing (Tier 2 — optional, later)
+
+Windows/macOS Authenticode certs — see `docs/signing-setup.md`. Builds work without them; downloads may show OS warnings.
 
 ---
 
@@ -77,45 +57,45 @@ Org repo → **Settings** → **Secrets and variables** → **Actions**
 | `terminal.machbox.dev` → site or GitHub redirect | Marketing |
 | Apex `machbox.dev` links to Terminal + Triage | Announce |
 
-Site polish (logos) does **not** block the repo going public if README + GitHub are canonical.
+Site polish does **not** block using GitHub as canonical docs.
 
 ---
 
-## Phase C — First public release (after transfer)
+## Phase C — First public release (next)
 
-1. Confirm CI green on `MachBox-Dev/mach-terminal` `main`
-2. `CHANGELOG.md` — add `[0.1.1]` or ship `0.1.0` OSS announcement entry if you want a fresh tag
-3. Tag from org repo:
+1. Re-run CI on `main` (last OSS push run was cancelled — check [Actions](https://github.com/MachBox-Dev/mach-terminal/actions))
+2. Re-add signing secrets (A4)
+3. `CHANGELOG.md` — cut `[0.1.1]` OSS announcement or tag `v0.1.0` from org
+4. Tag from org repo:
 
    ```bash
-   git tag v0.1.0   # or next semver
+   git tag v0.1.0
    git push origin v0.1.0
    ```
 
-4. `release.yml` uses `MACH_UPDATER_ENDPOINT=https://github.com/MachBox-Dev/mach-terminal/releases/latest/download/latest.json`
-5. Promote draft stable release per `RELEASING.md`
+5. `release.yml` → `MACH_UPDATER_ENDPOINT=https://github.com/MachBox-Dev/mach-terminal/releases/latest/download/latest.json`
+6. Promote draft stable release per `RELEASING.md`
 
 ---
 
 ## Phase D — Announce (when site is ready)
 
-- Org README already live
-- Post/link from `machbox.dev` → Terminal repo + Triage
-- Optional: GitHub Release notes pointing at `PRINCIPLES.md` and install instructions
+- Link from `machbox.dev` → [github.com/MachBox-Dev/mach-terminal](https://github.com/MachBox-Dev/mach-terminal) + Triage
+- Release notes: `PRINCIPLES.md`, install from Releases
 
 ---
 
-## Not required for flip (defer)
+## Post-flip product (not blocking)
 
 | Item | When |
 | --- | --- |
-| Bundle id `com.whobs.machterminal` → `com.machbox.terminal` | Before wide public install push (breaking) |
+| New-tab profile picker | First post-flip UX slice (before loud announce) |
+| Bundle id `com.whobs.machterminal` → `com.machbox.terminal` | Before wide install push (breaking) |
 | Full `NOTICE` dep regeneration | Before first org release tag |
-| `triage.machbox.dev` 301 | When Triage marketing moves |
 | Mach Cloud / `api.machbox.dev` | When relay exists |
 
 ---
 
 ## Rollback
 
-If something goes wrong after public flip: **Settings** → visibility back to private (org repos can be made private again on paid plans — verify your org plan). Transfers are harder to undo; test secrets + CI on org **before** tagging.
+Org repos can be made private again (plan-dependent). Transfers are hard to undo — prefer fixing forward.

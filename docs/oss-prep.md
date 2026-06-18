@@ -45,7 +45,7 @@ docs.machbox.dev            → shared / OSS docs (optional)
 | DNS: apex + `terminal.machbox.dev` | 🟡 | Site in progress (logos, etc.) — flip not blocked |
 | Plan `mach-triage.com` → `triage.machbox.dev` redirect | 🔒 when Triage site moves |
 | Decide GitHub org | ✅ | **`MachBox-Dev`** (`MachBox` was taken) |
-| Transfer repo to `MachBox-Dev/mach-terminal` + flip public | ⬜ | Still on `mwhobrey/mach-terminal` — see [`oss-flip-day.md`](oss-flip-day.md) |
+| Transfer repo to `MachBox-Dev/mach-terminal` + flip public | ✅ | [Public repo](https://github.com/MachBox-Dev/mach-terminal) |
 | Org profile README → `MachBox-Dev/.github/profile/README.md` | ✅ |
 | Mailboxes: `security@`, `conduct@` on `machbox.dev` | 🟡 | Set up with site/DNS (Cloudflare Email Routing) |
 | Updater URL → `github.com/MachBox-Dev/mach-terminal/...` | ✅ | Set in `release.yml`; takes effect after transfer |
@@ -102,7 +102,7 @@ docs.machbox.dev            → shared / OSS docs (optional)
 | Bug report issue template | ✅ |
 | Feature request issue template | ✅ |
 | Pull request template | ✅ |
-| Enable GitHub Security Advisories on public repo | ⬜ |
+| Enable GitHub Security Advisories on public repo | ✅ |
 | `security@` / `conduct@` mailboxes on `machbox.dev` | ⬜ |
 
 ---
@@ -138,11 +138,11 @@ docs.machbox.dev            → shared / OSS docs (optional)
 3. ✅ Run `gitleaks` / full history audit (also in CI `security-baseline`).
 4. ✅ Remove or gitignore `docs/continuation-handoff.md`.
 5. ✅ Set `package.json` `"private": false`.
-6. ⬜ Transfer `mwhobrey/mach-terminal` → **`MachBox-Dev/mach-terminal`** + flip public ([`oss-flip-day.md`](oss-flip-day.md)).
-7. ⬜ Enable Security Advisories on public org repo.
-8. 🟡 Apex site on `machbox.dev` + `terminal.machbox.dev` (in progress — not a hard blocker).
-9. ⬜ Tag `v0.1.0` (or next) on **public** org repo with signed artifacts.
-10. ⬜ Announce: `terminal.machbox.dev` + link from `machbox.dev` suite home.
+6. ✅ Transfer → **`MachBox-Dev/mach-terminal`** + public + Security Advisories.
+7. ⬜ Run `.\scripts\setup-release-signing.ps1` (Tier 1 updater secrets) — see [`docs/signing-setup.md`](signing-setup.md)
+8. 🟡 Apex site on `machbox.dev` + `terminal.machbox.dev` (in progress).
+9. ⬜ Green CI on `main` + tag `v0.1.0` (or next) with signed artifacts.
+10. ⬜ Announce from `machbox.dev` when site is ready.
 
 **Do not** enable Mach Cloud provider in the client until the relay exists — the
 open-core seam is already drawn in `PRINCIPLES.md`.
