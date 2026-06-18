@@ -151,6 +151,7 @@ import {
 } from "./core/aiBehaviorSettings";
 import { isAiAssistReady } from "./core/providerUiState";
 import { historyAiContract, useProviderAiState } from "./hooks/useProviderAiState";
+import { HISTORY_UI_LIMIT, prependHistoryEntry } from "./core/historySync";
 import { isTauri } from "./core/tauriRuntime";
 import {
   appendCommandSubmitted,
@@ -751,7 +752,7 @@ function App() {
             return setPaneSession(restored, restored.activePaneId, created.id);
           });
         }
-        const initialHistory = await historyQuery({ limit: 100 });
+        const initialHistory = await historyQuery({ limit: HISTORY_UI_LIMIT });
         setHistoryEntries(initialHistory);
         const recoveryNotice = await historyRecoveryTake();
         if (recoveryNotice) {
@@ -1064,6 +1065,17 @@ function App() {
             bufferLengthBefore: bufLen,
           }),
         );
+        setHistoryEntries((current) =>
+          prependHistoryEntry(current, {
+            id: event.sequence,
+            session_id: sid,
+            command: event.payload,
+            timestamp_ms: event.timestamp_ms,
+          }),
+        );
+        void historyQuery({ limit: HISTORY_UI_LIMIT })
+          .then((entries) => setHistoryEntries(entries))
+          .catch(() => undefined);
       });
     };
 
@@ -1456,10 +1468,7 @@ function App() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const entries = await historyQuery({
-        session_id: activeSession?.id,
-        limit: 150,
-      });
+      const entries = await historyQuery({ limit: HISTORY_UI_LIMIT });
       setHistoryEntries(entries);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load command history.";
@@ -1468,7 +1477,7 @@ function App() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [activeSession?.id]);
+  }, []);
 
   const refreshRuntimeMetrics = useCallback(async () => {
     try {

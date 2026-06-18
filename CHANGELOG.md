@@ -19,7 +19,8 @@ All notable changes to Mach Terminal are documented in this file.
 
 ### Fixed
 
-- `cargo audit` security gate: use `-f src-tauri/Cargo.lock` (not invalid `--manifest-path`); bump `rustls-webpki` for RUSTSEC-2026-0104.
+- **TER-5:** Command history updates on `command_submitted` (composer ↑/↓ and Settings no longer stale until manual refresh); global history list (`historySync.ts`).
+- **TER-4:** Commander/xterm viewport realignment at scrollback bottom (`terminalViewport.ts`: tail detection + `refresh()` after pin).
 - CI release-smoke: disable updater artifacts without signing keys; build `deb` only (AppImage/linuxdeploy often hangs on GHA).
 - Release builds: inject updater `pubkey` via `enable-updater-build.mjs` (literal key required; `$UPDATER_PUBLIC_KEY` in JSON is not expanded). Skip Tier 2 OS cert env in `release.yml` until real certs exist.
 - App close after exit-save overlay: grant `core:window:allow-destroy` so `destroy()` succeeds after `preventDefault`; persist failures no longer block close (`runExitPersistAndClose`).

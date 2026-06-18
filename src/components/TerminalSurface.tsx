@@ -60,6 +60,7 @@ import {
 } from "../core/aiChatState";
 import { canFocusComposerWhenPaneActive } from "../core/terminalComposerFocus";
 import { MACH_TERMINAL_MONO_FONT } from "../core/terminalUiFont";
+import { isViewportAtBottom, refreshTerminalViewport } from "../core/terminalViewport";
 import { MachStatusStrip } from "./MachStatusStrip";
 
 const DEFAULT_TERMINAL_FONT_SIZE = 13;
@@ -78,11 +79,6 @@ const FIND_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
   activeMatchBorder: "#fcd34d",
   activeMatchColorOverviewRuler: "#f59e0b",
 };
-
-function isViewportAtBottom(terminal: Terminal): boolean {
-  const b = terminal.buffer.active;
-  return b.viewportY >= b.baseY;
-}
 
 export const BELL_FLASH_DURATION_MS = 200;
 
@@ -227,6 +223,7 @@ export function TerminalSurface({
   const onResizeRef = useRef(onResize);
   const pendingWriteRef = useRef("");
   const writeFrameRef = useRef<number | null>(null);
+  const wasViewportAtBottomRef = useRef(true);
   const lastResizeSentRef = useRef<{ sessionId?: string; cols: number; rows: number }>({
     cols: 0,
     rows: 0,
@@ -320,6 +317,7 @@ export function TerminalSurface({
       terminal.write(chunk);
       if (pin) {
         terminal.scrollToBottom();
+        refreshTerminalViewport(terminal);
       }
       if (pendingWriteRef.current.length > 0) {
         writeFrameRef.current = window.requestAnimationFrame(run);
@@ -775,6 +773,7 @@ export function TerminalSurface({
       case "scrollToBottom":
         if (t) {
           t.scrollToBottom();
+          refreshTerminalViewport(t);
           setFollowOutput(true);
           emitUiSurfacePatch({ followOutput: true });
         }
@@ -794,6 +793,7 @@ export function TerminalSurface({
         emitUiSurfacePatch({ followOutput: decision.action.followOutput });
         if (decision.action.scrollToBottom && t) {
           t.scrollToBottom();
+          refreshTerminalViewport(t);
         }
         return;
       case "jumpSearch": {
@@ -909,11 +909,18 @@ export function TerminalSurface({
     terminal.writeln("mach-terminal");
     terminal.writeln("ready.");
     const atBottom = isViewportAtBottom(terminal);
+    wasViewportAtBottomRef.current = atBottom;
     setFollowOutput(atBottom);
     emitUiSurfacePatchRef.current({ followOutput: atBottom });
 
     const onScrollDispose = terminal.onScroll(() => {
       const nextFollowOutput = isViewportAtBottom(terminal);
+      if (nextFollowOutput && !wasViewportAtBottomRef.current) {
+        fitAddon.fit();
+        terminal.scrollToBottom();
+        refreshTerminalViewport(terminal);
+      }
+      wasViewportAtBottomRef.current = nextFollowOutput;
       setFollowOutput(nextFollowOutput);
       emitUiSurfacePatchRef.current({ followOutput: nextFollowOutput });
     });
@@ -1186,6 +1193,10 @@ export function TerminalSurface({
     if (inputMode === "commander" && isFocused) {
       queueMicrotask(() => {
         fitAddonRef.current?.fit();
+        if (isViewportAtBottom(terminal)) {
+          terminal.scrollToBottom();
+          refreshTerminalViewport(terminal);
+        }
         terminal.focus();
       });
     }
@@ -1206,6 +1217,7 @@ export function TerminalSurface({
       terminal.writeln("No session selected.");
       terminal.writeln("Create a session or pick an existing tab.");
       terminal.scrollToBottom();
+      refreshTerminalViewport(terminal);
       setFollowOutput(true);
       emitUiSurfacePatch({ followOutput: true });
       renderedStateRef.current = { sessionId: undefined, length: 0 };
@@ -1218,8 +1230,10 @@ export function TerminalSurface({
       terminal.write(activeBuffer);
       if (pin) {
         terminal.scrollToBottom();
+        refreshTerminalViewport(terminal);
       }
       const nextFollowOutput = isViewportAtBottom(terminal);
+      wasViewportAtBottomRef.current = nextFollowOutput;
       setFollowOutput(nextFollowOutput);
       emitUiSurfacePatch({ followOutput: nextFollowOutput });
       renderedStateRef.current = { sessionId: currentSession, length: activeBuffer.length };
@@ -1809,6 +1823,7 @@ export function TerminalSurface({
                 const t = terminalRef.current;
                 if (t) {
                   t.scrollToBottom();
+                  refreshTerminalViewport(t);
                   setFollowOutput(true);
                   emitUiSurfacePatch({ followOutput: true });
                 }
