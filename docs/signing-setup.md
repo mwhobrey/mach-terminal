@@ -154,6 +154,7 @@ After Tier 1 secrets are set:
 | `Stable releases require TAURI_SIGNING_PRIVATE_KEY` | Run `setup-release-signing.ps1` |
 | `failed to decode pubkey` / `Invalid symbol 36` | Pubkey was literal `$UPDATER_PUBLIC_KEY` — release CI must run `enable-updater-build.mjs` with `UPDATER_PUBLIC_KEY` secret set |
 | `failed to import keychain certificate` (macOS) | Remove invalid placeholder `APPLE_*` secrets, or add real Tier 2 certs to `release.yml` |
+| `failed to resolve signing identity` (macOS) | `APPLE_SIGNING_IDENTITY` must **exactly** match output of `security find-identity -v -p codesigning` after importing the same `.p12` (full string including `Developer ID Application:` and `(TEAMID)`). Re-set with `gh secret set APPLE_SIGNING_IDENTITY --body "..."`. Use `APPLE_CERTIFICATE_PASSWORD: ""` in workflow if p12 has no export password (Triage pattern). |
 | Updater checks fail in installed app | `UPDATER_PUBLIC_KEY` must match the key that signed the **installed** build |
 | `createUpdaterArtifacts` / no `.sig` files | Ensure `bundle.createUpdaterArtifacts: true` in `tauri.conf.json` |
 | `gh secret set` permission denied | Org owner/admin on `MachBox-Dev`, or repo admin |

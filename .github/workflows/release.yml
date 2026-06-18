@@ -138,16 +138,26 @@ jobs:
           UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
         run: node scripts/enable-updater-build.mjs
 
+      - name: Require macOS signing identity secret
+        if: runner.os == 'macOS'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::Set APPLE_SIGNING_IDENTITY to the full codesign identity (run: security find-identity -v -p codesigning on a Mac with the .p12 imported)."
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY is set (length ${#APPLE_SIGNING_IDENTITY})."
+
       - name: Build and publish release assets
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Tier 2 macOS — same Apple Developer ID as Mach Triage; see docs/signing-setup.md
-          # Leave APPLE_CERTIFICATE_PASSWORD empty if your .p12 export has no password (Triage pattern).
+          # Tier 2 macOS — match Mach Triage release.yml (empty p12 password when export has none)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_CERTIFICATE_PASSWORD: ""
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
