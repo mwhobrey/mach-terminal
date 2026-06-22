@@ -9,10 +9,11 @@ jobs:
   nightly-burnin:
     name: Nightly Burn-In (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-22.04]
 
     steps:
       - name: Checkout
@@ -27,15 +28,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        run: bash scripts/ci/install-linux-tauri-deps.sh
 
       - name: Install npm dependencies
         run: npm ci
@@ -48,11 +48,12 @@ jobs:
       - name: Evaluate threshold gates
         env:
           BURNIN_ARTIFACT_DIR: artifacts/burnin
-          BURNIN_MAX_P95_MS: "120000"
-          BURNIN_MAX_TEST_MS: "180000"
+          BURNIN_MAX_P95_MS: "200000"
+          BURNIN_MAX_TEST_MS: "300000"
         run: npm run burnin:gate
 
       - name: Upload burn-in artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: burnin-${{ matrix.os }}

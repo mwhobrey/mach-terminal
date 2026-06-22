@@ -10,10 +10,11 @@ jobs:
   matrix-build-and-test:
     name: Matrix Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.os == 'ubuntu-22.04' && 45 || 30 }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-22.04]
 
     steps:
       - name: Checkout
@@ -28,15 +29,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        run: bash scripts/ci/install-linux-tauri-deps.sh
 
       - name: Install npm dependencies
         run: npm ci
@@ -53,10 +53,14 @@ jobs:
       - name: Cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
+      - name: Release smoke (debug deb)
+        if: runner.os == 'Linux'
+        run: npm run release:smoke
+
   stability-signoff:
     name: Stability Signoff
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,14 +74,13 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        run: bash scripts/ci/install-linux-tauri-deps.sh
 
       - name: Install npm dependencies
         run: npm ci
@@ -87,7 +90,7 @@ jobs:
 
   security-baseline:
     name: Security Baseline (ubuntu)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,35 +121,3 @@ jobs:
 
       - name: Gitleaks secret scan
         run: gitleaks detect --source . --verbose
-
-  release-smoke:
-    name: Release Smoke (ubuntu)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Release smoke build
-        run: npm run release:smoke

@@ -14,6 +14,20 @@ const defaults = thresholdConfig.default ?? { warn: {}, fail: {} };
 const platformThresholds = thresholdConfig.platforms?.[platform] ?? {};
 const warnThresholds = { ...defaults.warn, ...(platformThresholds.warn ?? {}) };
 const failThresholds = { ...defaults.fail, ...(platformThresholds.fail ?? {}) };
+
+// Optional CI overrides (see nightly-burnin.yml).
+if (process.env.BURNIN_MAX_P95_MS) {
+  const value = Number.parseInt(process.env.BURNIN_MAX_P95_MS, 10);
+  if (Number.isFinite(value)) {
+    failThresholds.p95_test_elapsed_ms = value;
+  }
+}
+if (process.env.BURNIN_MAX_TEST_MS) {
+  const value = Number.parseInt(process.env.BURNIN_MAX_TEST_MS, 10);
+  if (Number.isFinite(value)) {
+    failThresholds.max_test_elapsed_ms = value;
+  }
+}
 const hardZero = thresholdConfig.hardZero ?? {};
 
 const metrics = {

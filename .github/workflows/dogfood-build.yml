@@ -19,15 +19,19 @@ jobs:
         include:
           - platform: windows-latest
             label: windows
+            build_command: npm run release:build
             artifact_glob: src-tauri/target/release/bundle/**/*
-          - platform: ubuntu-latest
+          - platform: ubuntu-22.04
             label: linux
+            build_command: npm run check:versions && npm run build && npm run tauri -- build --bundles deb
             artifact_glob: src-tauri/target/release/bundle/**/*
           - platform: macos-latest
             label: macos
+            build_command: npm run release:build
             artifact_glob: src-tauri/target/release/bundle/**/*
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -42,28 +46,24 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        run: bash scripts/ci/install-linux-tauri-deps.sh
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Validate version consistency
-        run: npm run check:versions
-
       - name: Build release bundles
-        run: npm run release:build
+        run: ${{ matrix.build_command }}
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
-          name: mach-terminal-${{ matrix.label }}-v0.1.0
+          name: mach-terminal-${{ matrix.label }}-dogfood
           path: ${{ matrix.artifact_glob }}
           if-no-files-found: error

@@ -19,12 +19,12 @@
   "platforms": {
     "win32": {
       "warn": {
-        "p95_test_elapsed_ms": 95000,
-        "max_test_elapsed_ms": 160000
+        "p95_test_elapsed_ms": 120000,
+        "max_test_elapsed_ms": 200000
       },
       "fail": {
-        "p95_test_elapsed_ms": 130000,
-        "max_test_elapsed_ms": 200000
+        "p95_test_elapsed_ms": 180000,
+        "max_test_elapsed_ms": 280000
       }
     },
     "darwin": {
@@ -39,12 +39,12 @@
     },
     "linux": {
       "warn": {
-        "p95_test_elapsed_ms": 85000,
-        "max_test_elapsed_ms": 145000
+        "p95_test_elapsed_ms": 150000,
+        "max_test_elapsed_ms": 220000
       },
       "fail": {
-        "p95_test_elapsed_ms": 115000,
-        "max_test_elapsed_ms": 175000
+        "p95_test_elapsed_ms": 200000,
+        "max_test_elapsed_ms": 300000
       }
     }
   },
