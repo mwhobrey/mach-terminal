@@ -29,6 +29,8 @@ if (process.env.BURNIN_MAX_TEST_MS) {
   }
 }
 const hardZero = thresholdConfig.hardZero ?? {};
+const platformHardZero = thresholdConfig.platformHardZero?.[platform] ?? {};
+const effectiveHardZero = { ...hardZero, ...platformHardZero };
 
 const metrics = {
   p95_test_elapsed_ms: summary.totals.p95_test_elapsed_ms,
@@ -58,7 +60,7 @@ const checks = Object.keys({ ...warnThresholds, ...failThresholds }).map((id) =>
   };
 });
 
-const hardZeroChecks = Object.entries(hardZero).map(([id, expected]) => {
+const hardZeroChecks = Object.entries(effectiveHardZero).map(([id, expected]) => {
   const actual = summary.stability?.[id];
   const pass = actual === expected;
   return {
@@ -84,6 +86,18 @@ writeFileSync(gateReportPath, JSON.stringify(report, null, 2));
 console.log(`Threshold report written to ${gateReportPath}`);
 
 if (!report.pass) {
+  const failedChecks = [...checks, ...hardZeroChecks].filter((check) => !check.pass);
+  for (const check of failedChecks) {
+    if ("failThreshold" in check) {
+      console.error(
+        `::error::Burn-in gate FAIL ${check.id}: actual=${check.actual} fail>${check.failThreshold} warn>${check.warnThreshold}`,
+      );
+    } else {
+      console.error(
+        `::error::Burn-in gate FAIL ${check.id}: actual=${check.actual} expected=${check.expected}`,
+      );
+    }
+  }
   console.error("Burn-in threshold gate failed.");
   process.exit(1);
 }

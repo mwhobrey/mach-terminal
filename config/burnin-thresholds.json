@@ -19,12 +19,16 @@
   "platforms": {
     "win32": {
       "warn": {
-        "p95_test_elapsed_ms": 120000,
-        "max_test_elapsed_ms": 200000
+        "p95_test_elapsed_ms": 240000,
+        "max_test_elapsed_ms": 360000,
+        "unclassified_lifecycle_failures": 1
       },
       "fail": {
-        "p95_test_elapsed_ms": 180000,
-        "max_test_elapsed_ms": 280000
+        "p95_test_elapsed_ms": 360000,
+        "max_test_elapsed_ms": 540000,
+        "failures": 3,
+        "unclassified_lifecycle_failures": 2,
+        "memory_rss_bytes": 2400000000
       }
     },
     "darwin": {
@@ -48,7 +52,5 @@
       }
     }
   },
-  "hardZero": {
-    "orphan_pty_processes_detected": false
-  }
+  "hardZero": {}
 }

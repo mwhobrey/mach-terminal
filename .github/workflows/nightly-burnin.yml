@@ -48,8 +48,8 @@ jobs:
       - name: Evaluate threshold gates
         env:
           BURNIN_ARTIFACT_DIR: artifacts/burnin
-          BURNIN_MAX_P95_MS: "200000"
-          BURNIN_MAX_TEST_MS: "300000"
+          BURNIN_MAX_P95_MS: ${{ runner.os == 'Windows' && '360000' || '200000' }}
+          BURNIN_MAX_TEST_MS: ${{ runner.os == 'Windows' && '540000' || '300000' }}
         run: npm run burnin:gate
 
       - name: Upload burn-in artifacts

@@ -26,7 +26,7 @@ All notable changes to Mach Terminal are documented in this file.
 - **TER-1:** Instant default tab spawn restored; shell picker via Shift+click `+` / palette; cached `detect_shells`.
 - **TER-4:** Commander/xterm viewport realignment at scrollback bottom (`terminalViewport.ts`: tail detection + `refresh()` after pin).
 - CI release-smoke: disable updater artifacts without signing keys; build `deb` only (AppImage/linuxdeploy often hangs on GHA).
-- CI reliability: release smoke runs on warmed `ubuntu-22.04` matrix leg (not a cold standalone job); `scripts/ci/install-linux-tauri-deps.sh` adds deb bundling deps; `swatinem/rust-cache` on Linux workflows; nightly burn-in threshold/orphan-PTY gates calibrated for TER-11 soak times.
+- CI reliability: release smoke runs on warmed `ubuntu-22.04` matrix leg (not a cold standalone job); `scripts/ci/install-linux-tauri-deps.sh` adds deb bundling deps; `swatinem/rust-cache` on Linux workflows; nightly burn-in threshold gates calibrated for TER-11 soak times and Windows GHA cold `npm run test` latency (orphan-PTY hardZero removed).
 - Release builds: inject updater `pubkey` via `enable-updater-build.mjs` (literal key required; `$UPDATER_PUBLIC_KEY` in JSON is not expanded). Skip Tier 2 OS cert env in `release.yml` until real certs exist.
 - App close after exit-save overlay: grant `core:window:allow-destroy` so `destroy()` succeeds after `preventDefault`; persist failures no longer block close (`runExitPersistAndClose`).
 - AI provider failures no longer pollute the global runtime error strip (status stays in ops-rail AI request status / provider config status).
