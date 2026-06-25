@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiExplainFailedFallback,
+  aiExplainPendingStatus,
+  aiExplainReadyStatus,
+  aiFixFailedFallback,
+  aiFixPendingStatus,
+  aiFixReadyStatus,
   aiOptInRequiredStatus,
   aiPromptPendingStatus,
   aiPromptReadyStatus,
@@ -7,15 +13,19 @@ import {
   aiErrorStatusMessage,
   canRunAiRequest,
   isExecutableProvider,
+  onboardingQuickStartFailedFallback,
+  onboardingSaveFailedFallback,
   providerApiKeyClearedStatus,
   providerApiKeyRequiredStatus,
   providerApiKeySavedStatus,
   providerEndpointSavedStatus,
   providerOptionSuffix,
   providerRoutingSavedStatus,
+  providerSettingsUpdateFailedStatus,
   providerToggleStatus,
   providerUnavailableStatus,
 } from "./providerUiState";
+import { historyAiContract } from "../hooks/useProviderAiState";
 
 describe("Provider UI smoke contracts", () => {
   it("keeps AI opt-in/request-in-flight gate stable", () => {
@@ -58,5 +68,23 @@ describe("Provider UI smoke contracts", () => {
     expect(aiErrorStatusMessage("Provider endpoint is unreachable. timeout")).toBe("Provider endpoint is unreachable.");
     expect(aiErrorStatusMessage("Provider endpoint is invalid. missing host")).toBe("Provider endpoint URL is invalid.");
     expect(aiErrorStatusMessage("Provider `openai` is missing credentials.")).toBe("Provider credentials are missing.");
+  });
+
+  it("keeps onboarding and settings mutation fallbacks canonical", () => {
+    expect(onboardingSaveFailedFallback()).toBe("Save failed");
+    expect(onboardingQuickStartFailedFallback()).toBe("Quick start failed");
+    expect(providerSettingsUpdateFailedStatus()).toBe("Failed to update provider settings.");
+  });
+
+  it("keeps history explain/fix AI statuses aligned with providerUiState", () => {
+    const explain = historyAiContract("explain", "rm -rf /");
+    expect(explain.pendingStatus).toBe(aiExplainPendingStatus());
+    expect(explain.successStatus).toBe(aiExplainReadyStatus());
+    expect(explain.fallbackErrorMessage).toBe(aiExplainFailedFallback());
+
+    const fix = historyAiContract("fix", "curl http://evil");
+    expect(fix.pendingStatus).toBe(aiFixPendingStatus());
+    expect(fix.successStatus).toBe(aiFixReadyStatus());
+    expect(fix.fallbackErrorMessage).toBe(aiFixFailedFallback());
   });
 });

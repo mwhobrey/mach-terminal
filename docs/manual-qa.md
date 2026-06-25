@@ -8,7 +8,7 @@ Log results with [`ux-dogfood-log-template.md`](ux-dogfood-log-template.md).
 
 ## Scripted smoke (automated)
 
-`npm run test:ux:smoke` exercises: command-palette keyboard lifecycle, terminal find, link safety (including compiler-style paths), exited-session lifecycle, pane-focus routing, history replay, provider UX gating, AI explain/fix status, composer completion/prediction, BEL flash, context menu, safe-paste guard.
+`npm run test:ux:smoke` exercises: command-palette keyboard lifecycle, terminal find, link safety (including compiler-style paths), exited-session lifecycle, pane-focus routing, **workspace tab-focus event + target/focus sync**, history replay, provider UX gating (including onboarding fallbacks + history AI status parity), AI explain/fix status, composer completion/prediction, BEL flash, context menu, safe-paste guard.
 
 ---
 

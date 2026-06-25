@@ -81,9 +81,10 @@ Nothing is documented as outright broken in the handoff/changelog; open items ar
 
 ## Immediate Next Steps (recommended priority)
 
-1. **Phase 2 hot-path (only if profiling demands):** real PTY flow control (replace dead `MAX_PENDING_CHUNKS` path); native GPU grid spike (`alacritty_terminal` + `wgpu`) — not urgent until measured pain.
-2. **First-class app layer (provider UX unification).** Onboarding draft-save vs Settings live-save; shared status/error strings across surfaces.
-3. **Convert manual dogfood rows → scripted smoke** where feasible (tab-focus routing, settings/palette/surface coordination).
+1. **Create/link Linear TER-26/27/28** from `docs/linear/TER-26-28-post-rc8.md` on the active cycle (MCP Linear unavailable in agent session).
+2. **TER-26 (in progress on `ter-26-28-post-rc8`):** provider status string unification landed; optional follow-up: onboarding live-save parity with Settings.
+3. **TER-27:** dogfood rc.8 with diagnostics under output flood; execute `docs/phase2-perf-spike.md` go/no-go before coalesce/backpressure code.
+4. **TER-28 (partial):** workspace focus + provider cross-surface smoke added; continue palette/settings coordination rows from `manual-qa.md`.
 
 ## Verification Before You Commit
 ```

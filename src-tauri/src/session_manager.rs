@@ -305,9 +305,7 @@ impl SessionManager {
                         if !output.is_empty() {
                             let mut pending = VecDeque::new();
                             for chunk in split_chunk(&output, MAX_CHUNK) {
-                                pending.push_back(chunk);
-                                if pending.len() > MAX_PENDING_CHUNKS {
-                                    pending.pop_front();
+                                if enqueue_output_chunk(&mut pending, chunk, MAX_PENDING_CHUNKS) {
                                     counters_for_thread
                                         .output_chunks_dropped
                                         .fetch_add(1, Ordering::Relaxed);
@@ -850,6 +848,17 @@ fn is_terminal_status(status: &str) -> bool {
     matches!(status, STATUS_STOPPED | STATUS_CLOSED | STATUS_ERROR)
 }
 
+/// Push a display chunk onto the pending queue, dropping the oldest entry when
+/// `max_pending` is exceeded. Returns `true` when a drop occurred.
+fn enqueue_output_chunk(pending: &mut VecDeque<String>, chunk: String, max_pending: usize) -> bool {
+    pending.push_back(chunk);
+    if pending.len() > max_pending {
+        pending.pop_front();
+        return true;
+    }
+    false
+}
+
 fn split_chunk(data: &str, max_bytes: usize) -> Vec<String> {
     if data.len() <= max_bytes {
         return vec![data.to_string()];
@@ -956,8 +965,8 @@ pub fn default_shell() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_utf8_streaming, history_store, normalize_history_replay_command, query_history_entries, split_chunk,
-        SessionManager,
+        decode_utf8_streaming, enqueue_output_chunk, history_store, normalize_history_replay_command,
+        query_history_entries, split_chunk, SessionManager, MAX_PENDING_CHUNKS,
     };
     use crate::models::{HistoryEntry, HistoryQueryRequest};
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
@@ -972,6 +981,27 @@ mod tests {
         let data = "abcdefghij";
         let joined = split_chunk(data, 3).join("");
         assert_eq!(joined, data);
+    }
+
+    #[test]
+    fn enqueue_output_chunk_drops_oldest_when_cap_exceeded() {
+        let mut pending = VecDeque::new();
+        for index in 0..MAX_PENDING_CHUNKS {
+            assert!(!enqueue_output_chunk(
+                &mut pending,
+                format!("chunk-{index}"),
+                MAX_PENDING_CHUNKS,
+            ));
+        }
+        assert_eq!(pending.len(), MAX_PENDING_CHUNKS);
+        assert!(enqueue_output_chunk(
+            &mut pending,
+            "chunk-overflow".to_string(),
+            MAX_PENDING_CHUNKS,
+        ));
+        assert_eq!(pending.len(), MAX_PENDING_CHUNKS);
+        assert_eq!(pending.front().map(String::as_str), Some("chunk-1"));
+        assert_eq!(pending.back().map(String::as_str), Some("chunk-overflow"));
     }
 
     #[test]

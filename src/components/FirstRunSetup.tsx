@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { normalizeQuickStartProfile, QUICKSTART_ROUTING, toQuickStartProviders } from "../core/onboarding";
-import { buildProviderCards, providerOptionSuffix, type RoutingModelKey } from "../core/providerUiState";
+import { buildProviderCards, onboardingQuickStartFailedFallback, onboardingSaveFailedFallback, providerOptionSuffix, settingsLoadFailedFallback, type RoutingModelKey } from "../core/providerUiState";
+import { surfaceErrorMessage } from "../core/errors";
 import { PROVIDER_REGISTRY } from "../core/providers";
 import type { ProviderRoutingSettings, ProviderSettings, TerminalProfile } from "../core/terminal";
 import {
@@ -48,10 +49,6 @@ export function shouldShowOnboardingPwshCta(args: {
   hardStatusError: boolean;
 }): boolean {
   return args.tauri && !args.promptSeen && !args.alreadyInstalled && !args.hardStatusError;
-}
-
-export function onboardingFailureMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }
 
 export function shouldDisablePwshPromptActions(args: {
@@ -122,7 +119,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load settings");
+          setError(surfaceErrorMessage(e, settingsLoadFailedFallback()));
         }
       }
     })();
@@ -168,7 +165,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
       await onSaved();
       onClose();
     } catch (e) {
-      setError(onboardingFailureMessage(e, "Save failed"));
+      setError(surfaceErrorMessage(e, onboardingSaveFailedFallback()));
     } finally {
       setLoading(false);
     }
@@ -206,7 +203,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
       await onSaved();
       onClose();
     } catch (e) {
-      setError(onboardingFailureMessage(e, "Quick start failed"));
+      setError(surfaceErrorMessage(e, onboardingQuickStartFailedFallback()));
     } finally {
       setLoading(false);
     }

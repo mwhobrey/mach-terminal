@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  onboardingFailureMessage,
+  onboardingQuickStartFailedFallback,
+  onboardingSaveFailedFallback,
+} from "../core/providerUiState";
+import { surfaceErrorMessage } from "../core/errors";
+import {
   shouldDisablePwshPromptActions,
   shouldShowOnboardingPwshCta,
 } from "./FirstRunSetup";
@@ -42,8 +46,8 @@ describe("shouldShowOnboardingPwshCta", () => {
 
 describe("FirstRunSetup provider/onboarding reliability helpers", () => {
   it("maps save/quick-start failures to stable fallback strings", () => {
-    expect(onboardingFailureMessage(new Error("network timeout"), "Save failed")).toBe("network timeout");
-    expect(onboardingFailureMessage("unknown", "Quick start failed")).toBe("Quick start failed");
+    expect(surfaceErrorMessage(new Error("network timeout"), onboardingSaveFailedFallback())).toBe("network timeout");
+    expect(surfaceErrorMessage("unknown", onboardingQuickStartFailedFallback())).toBe(onboardingQuickStartFailedFallback());
   });
 
   it("locks onboarding hook actions while loading or hook operations are pending", () => {

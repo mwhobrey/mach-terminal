@@ -2,16 +2,32 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   aiErrorStatusMessage,
   aiAssistNotReadyStatus,
+  aiExecutionFailedFallback,
+  aiExplainFailedFallback,
+  aiExplainFailedStatus,
+  aiExplainPendingStatus,
+  aiExplainReadyStatus,
+  aiFixFailedFallback,
+  aiFixFailedStatus,
+  aiFixPendingStatus,
+  aiFixReadyStatus,
+  aiNoActiveSessionStatus,
   aiPromptPendingStatus,
   aiPromptReadyStatus,
   aiRoutingOptInStatus,
+  aiRoutingOptInUpdateFailedStatus,
   isAiAssistReady,
   isExecutableProvider,
   providerApiKeyClearedStatus,
+  providerApiKeyClearFailedStatus,
   providerApiKeyRequiredStatus,
   providerApiKeySavedStatus,
+  providerApiKeyUpdateFailedStatus,
   providerEndpointSavedStatus,
+  providerEndpointUpdateFailedStatus,
+  providerRoutingSaveFailedStatus,
   providerRoutingSavedStatus,
+  providerSettingsUpdateFailedStatus,
   providerToggleStatus,
   providerUnavailableStatus,
 } from "../core/providerUiState";
@@ -133,19 +149,19 @@ export function historyAiContract(action: HistoryAiAction, command: string): His
     return {
       prompt: `Explain this shell command:\n${command}`,
       intent: "explain_command",
-      pendingStatus: "Generating AI explanation...",
-      successStatus: "AI explanation ready.",
-      historyFailureStatus: "AI explanation failed.",
-      fallbackErrorMessage: "AI explain failed.",
+      pendingStatus: aiExplainPendingStatus(),
+      successStatus: aiExplainReadyStatus(),
+      historyFailureStatus: aiExplainFailedStatus(),
+      fallbackErrorMessage: aiExplainFailedFallback(),
     };
   }
   return {
     prompt: `Provide a safer or corrected version of this command, with a short explanation:\n${command}`,
     intent: "fix_command",
-    pendingStatus: "Generating safer command suggestion...",
-    successStatus: "AI fix suggestion ready.",
-    historyFailureStatus: "AI fix failed.",
-    fallbackErrorMessage: "AI fix failed.",
+    pendingStatus: aiFixPendingStatus(),
+    successStatus: aiFixReadyStatus(),
+    historyFailureStatus: aiFixFailedStatus(),
+    fallbackErrorMessage: aiFixFailedFallback(),
   };
 }
 
@@ -255,7 +271,7 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerToggleStatus(providerId, enabled));
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider settings.");
+      setProviderConfigStatus(messageFromUnknownError(error, providerSettingsUpdateFailedStatus()));
     }
   }, [applyProviderDescriptors]);
 
@@ -280,7 +296,7 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerApiKeySavedStatus(providerId));
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider API key.");
+      setProviderConfigStatus(messageFromUnknownError(error, providerApiKeyUpdateFailedStatus()));
     }
   }, [applyProviderDescriptors, providerApiKeyDrafts]);
 
@@ -292,7 +308,7 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerApiKeyClearedStatus(providerId));
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to clear provider API key.");
+      setProviderConfigStatus(messageFromUnknownError(error, providerApiKeyClearFailedStatus()));
     }
   }, [applyProviderDescriptors]);
 
@@ -304,7 +320,7 @@ export function useProviderAiState({
       applyProviderDescriptors(providerDescriptors);
       setProviderConfigStatus(providerEndpointSavedStatus(providerId));
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update provider endpoint.");
+      setProviderConfigStatus(messageFromUnknownError(error, providerEndpointUpdateFailedStatus()));
     }
   }, [applyProviderDescriptors, providerEndpointDrafts]);
 
@@ -335,7 +351,7 @@ export function useProviderAiState({
       });
       setProviderConfigStatus(providerRoutingSavedStatus());
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to save routing settings.");
+      setProviderConfigStatus(messageFromUnknownError(error, providerRoutingSaveFailedStatus()));
     }
   }, [
     routingDraft.anthropic_model,
@@ -372,7 +388,7 @@ export function useProviderAiState({
       });
       setProviderConfigStatus(aiRoutingOptInStatus(enabled));
     } catch (error) {
-      setProviderConfigStatus(error instanceof Error ? error.message : "Failed to update AI routing opt-in.");
+      setProviderConfigStatus(messageFromUnknownError(error, aiRoutingOptInUpdateFailedStatus()));
     }
   }, [
     routing,
@@ -385,7 +401,7 @@ export function useProviderAiState({
 
   const runAiPrompt = useCallback(async () => {
     if (!activeSession) {
-      setAiRequestStatus("No active session selected for AI prompt.");
+      setAiRequestStatus(aiNoActiveSessionStatus());
       return;
     }
     if (!isExecutableProvider(routing.default_provider)) {
@@ -414,7 +430,7 @@ export function useProviderAiState({
       if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
         return;
       }
-      const message = messageFromUnknownError(error, "AI execution failed.");
+      const message = messageFromUnknownError(error, aiExecutionFailedFallback());
       setAiResponse(null);
       setAiRequestStatus(aiErrorStatusMessage(message));
     } finally {
@@ -428,7 +444,7 @@ export function useProviderAiState({
     async (promptText: string, options: RunAiPromptOptions = {}) => {
       const targetSessionId = options.sessionId ?? activeSession?.id;
       if (!targetSessionId) {
-        setAiRequestStatus("No active session selected for AI prompt.");
+        setAiRequestStatus(aiNoActiveSessionStatus());
         return;
       }
       const trimmed = promptText.trim();
@@ -483,7 +499,7 @@ export function useProviderAiState({
         if (!shouldApplyAiResult(latestAiRequestRef.current, requestId)) {
           return;
         }
-        const message = messageFromUnknownError(error, "AI execution failed.");
+        const message = messageFromUnknownError(error, aiExecutionFailedFallback());
         setAiResponse(null);
         setAiRequestStatus(aiErrorStatusMessage(message));
         options.onError?.(message);

@@ -239,3 +239,82 @@ export function aiErrorStatusMessage(message: string): string {
       return "AI request failed.";
   }
 }
+
+/** Shared fallbacks for settings/onboarding load failures. */
+export function settingsLoadFailedFallback(): string {
+  return "Failed to load settings.";
+}
+
+export function onboardingSaveFailedFallback(): string {
+  return "Save failed";
+}
+
+export function onboardingQuickStartFailedFallback(): string {
+  return "Quick start failed";
+}
+
+/** Provider settings mutation failures (settings + onboarding batch save). */
+export function providerSettingsUpdateFailedStatus(): string {
+  return "Failed to update provider settings.";
+}
+
+export function providerApiKeyUpdateFailedStatus(): string {
+  return "Failed to update provider API key.";
+}
+
+export function providerApiKeyClearFailedStatus(): string {
+  return "Failed to clear provider API key.";
+}
+
+export function providerEndpointUpdateFailedStatus(): string {
+  return "Failed to update provider endpoint.";
+}
+
+export function providerRoutingSaveFailedStatus(): string {
+  return "Failed to save routing settings.";
+}
+
+export function aiRoutingOptInUpdateFailedStatus(): string {
+  return "Failed to update AI routing opt-in.";
+}
+
+export function aiNoActiveSessionStatus(): string {
+  return "No active session selected for AI prompt.";
+}
+
+export function aiExecutionFailedFallback(): string {
+  return "AI execution failed.";
+}
+
+/** History panel explain/fix AI status strings. */
+export function aiExplainPendingStatus(): string {
+  return "Generating AI explanation...";
+}
+
+export function aiExplainReadyStatus(): string {
+  return "AI explanation ready.";
+}
+
+export function aiExplainFailedStatus(): string {
+  return "AI explanation failed.";
+}
+
+export function aiExplainFailedFallback(): string {
+  return "AI explain failed.";
+}
+
+export function aiFixPendingStatus(): string {
+  return "Generating safer command suggestion...";
+}
+
+export function aiFixReadyStatus(): string {
+  return "AI fix suggestion ready.";
+}
+
+export function aiFixFailedStatus(): string {
+  return "AI fix failed.";
+}
+
+export function aiFixFailedFallback(): string {
+  return "AI fix failed.";
+}
