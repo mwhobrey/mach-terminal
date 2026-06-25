@@ -2440,7 +2440,28 @@ function App() {
           onClose={() => setPaletteOpen(false)}
           onRun={(commandId) => void executeCommand(commandId as AppCommandId)}
         />
-        <FirstRunSetup open={firstRunModalOpen} onClose={() => setFirstRunModalOpen(false)} onSaved={handleSetupSaved} />
+        <FirstRunSetup
+          open={firstRunModalOpen}
+          onClose={() => setFirstRunModalOpen(false)}
+          onSaved={handleSetupSaved}
+          liveProviderSettings={{
+            providers,
+            routing,
+            routingDraft,
+            setRoutingDraft,
+            providerConfigStatus,
+            providerEndpointDrafts,
+            providerApiKeyDrafts,
+            updateProviderEndpointDraft,
+            updateProviderApiKeyDraft,
+            toggleProvider,
+            saveProviderEndpoint,
+            saveProviderApiKey,
+            clearProviderApiKey,
+            setAiOptIn,
+            saveRoutingConfig,
+          }}
+        />
         <NewTabProfileModal
           open={newTabPickerOpen}
           onClose={() => setNewTabPickerOpen(false)}

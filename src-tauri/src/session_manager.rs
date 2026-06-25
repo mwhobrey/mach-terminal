@@ -966,7 +966,7 @@ pub fn default_shell() -> String {
 mod tests {
     use super::{
         decode_utf8_streaming, enqueue_output_chunk, history_store, normalize_history_replay_command,
-        query_history_entries, split_chunk, SessionManager, MAX_PENDING_CHUNKS,
+        query_history_entries, split_chunk, SessionManager, MAX_CHUNK, MAX_PENDING_CHUNKS,
     };
     use crate::models::{HistoryEntry, HistoryQueryRequest};
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
@@ -981,6 +981,23 @@ mod tests {
         let data = "abcdefghij";
         let joined = split_chunk(data, 3).join("");
         assert_eq!(joined, data);
+    }
+
+    #[test]
+    fn typical_8kb_reads_do_not_hit_pending_cap() {
+        let mut pending = VecDeque::new();
+        let mut drops = 0usize;
+        let payload = "x".repeat(8192);
+        for _ in 0..1000 {
+            for chunk in split_chunk(&payload, MAX_CHUNK) {
+                if enqueue_output_chunk(&mut pending, chunk, MAX_PENDING_CHUNKS) {
+                    drops += 1;
+                }
+            }
+            // Reader emits ≤4 chunks per 8 KB read; the UI channel consumer drains between reads.
+            pending.clear();
+        }
+        assert_eq!(drops, 0, "8KB reads should not fill the pending cap under normal conditions");
     }
 
     #[test]

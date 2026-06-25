@@ -13,9 +13,13 @@ Phase 0/1 landed:
 
 `MAX_PENDING_CHUNKS` (64) is **effectively dead** at current read sizes: an 8 KB read → ≤4 chunks after `split_chunk(2048)`. Drops only matter under sustained floods that fill the pending deque faster than the channel drains.
 
-## Profiling plan (go/no-go)
+## Automated baseline (TER-27)
 
-Run these **before** changing drop/coalesce semantics:
+Rust unit test `typical_8kb_reads_do_not_hit_pending_cap` simulates 1000× 8 KB reads through `split_chunk` + `enqueue_output_chunk`. **Result: zero drops** at `MAX_PENDING_CHUNKS=64` with `MAX_CHUNK=2048`.
+
+**Go/no-go for Phase 2 code changes:** require `output_chunks_dropped > 0` in live diagnostics during dogfood flood *or* measured UI stall. Until then, defer coalesce/backpressure implementation.
+
+**Manual profiling checklist (rc.8):**
 
 1. **Heavy output:** `yes | head -c 50M`, `cat huge.log`, `npm run build` in tmux (Commander mode).
 2. **Multi-tab:** 3+ tabs all streaming build output simultaneously.

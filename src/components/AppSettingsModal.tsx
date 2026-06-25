@@ -2,13 +2,11 @@ import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PLUGIN_REGISTRY } from "../core/plugins";
 import {
-  aiOptInRequiredStatus,
-  buildProviderCards,
   canRunAiRequest,
+  aiOptInRequiredStatus,
   isAiAssistReady,
   isExecutableProvider,
   providerOptionSuffix,
-  type RoutingModelKey,
 } from "../core/providerUiState";
 import { uiSurfaceFindLabel, uiSurfaceFollowLabel, type UiSurfaceState } from "../core/uiSurfaceState";
 import type { ProviderDescriptor } from "../core/providers";
@@ -31,6 +29,7 @@ import { HistoryPanel } from "./HistoryPanel";
 import { ShellIntegrationSection } from "./ShellIntegrationSection";
 import { StatusStripSettingsSection } from "./StatusStripSettingsSection";
 import { TerminalProfileSection } from "./TerminalProfileSection";
+import { ProviderAiProvidersPanel } from "./ProviderAiProvidersPanel";
 import type { TerminalProfile } from "../core/terminal";
 
 type SettingsSection = { id: string; label: string; devOnly?: boolean };
@@ -263,7 +262,6 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
   const showDevTools = import.meta.env.DEV;
   const visibleSections = SETTINGS_SECTIONS.filter((section) => showDevTools || !section.devOnly);
   const paneHidden = (id: string) => activeSectionId !== id;
-  const providerCards = buildProviderCards(providers, routingDraft.default_provider);
   const aiAssistEnabled = isAiAssistReady(routing.ai_feature_enabled, routing.default_provider, providers);
 
   return (
@@ -374,8 +372,6 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                 Bring your own key. AI is optional, off by default, and never required for the terminal — configure a
                 provider, choose a default, then opt in.
               </p>
-              {providerConfigStatus ? <p className="muted-block">{providerConfigStatus}</p> : null}
-
               <div className="ai-routing-bar">
                 <label className="toggle-row ai-routing-optin">
                   <input
@@ -461,101 +457,25 @@ export function AppSettingsModal(props: AppSettingsModalProps) {
                 </button>
               </div>
 
-              <ul className="provider-block-list">
-                {providerCards.map((card) => {
-                  const modelKey: RoutingModelKey | null = card.modelKey;
-                  return (
-                    <li key={card.id}>
-                      <div className="provider-block-head">
-                        <span>
-                          {card.name}
-                          <small>
-                            {card.kind}
-                            {card.isDefault ? " · default" : ""}
-                          </small>
-                        </span>
-                        <strong>{card.statusLabel}</strong>
-                        <button
-                          type="button"
-                          onClick={() => void toggleProvider(card.id, !card.enabled)}
-                          className="inline-btn"
-                          disabled={!card.executable && !card.enabled}
-                        >
-                          {card.enabled ? "Disable" : "Enable"}
-                        </button>
-                      </div>
-                      <div className="provider-block-endpoint">
-                        <input
-                          value={providerEndpointDrafts[card.id] ?? ""}
-                          onChange={(event) => updateProviderEndpointDraft(card.id, event.currentTarget.value)}
-                          placeholder="Endpoint URL"
-                          className="inline-input"
-                          aria-label={`${card.id} endpoint`}
-                          disabled={!card.executable}
-                        />
-                        <button
-                          type="button"
-                          className="inline-btn ghost"
-                          onClick={() => void saveProviderEndpoint(card.id)}
-                          disabled={!card.executable}
-                        >
-                          Save endpoint
-                        </button>
-                      </div>
-                      <div className="provider-block-endpoint">
-                        <input
-                          type="password"
-                          value={providerApiKeyDrafts[card.id] ?? ""}
-                          onChange={(event) => updateProviderApiKeyDraft(card.id, event.currentTarget.value)}
-                          placeholder={card.authLabel.startsWith("Key stored") ? "Key stored (enter to replace)" : "API key"}
-                          className="inline-input"
-                          aria-label={`${card.id} api key`}
-                          disabled={!card.executable}
-                        />
-                        <button
-                          type="button"
-                          className="inline-btn ghost"
-                          onClick={() => void saveProviderApiKey(card.id)}
-                          disabled={!card.executable}
-                        >
-                          Save key
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-btn ghost"
-                          onClick={() => void clearProviderApiKey(card.id)}
-                          disabled={!card.executable}
-                        >
-                          Clear key
-                        </button>
-                      </div>
-                      {modelKey ? (
-                        <div className="provider-block-endpoint provider-block-model">
-                          <span className="provider-block-model-label">Model</span>
-                          <input
-                            value={routingDraft[modelKey]}
-                            onChange={(event) => {
-                              const value = event.currentTarget.value;
-                              setRoutingDraft((current) => ({ ...current, [modelKey]: value }));
-                            }}
-                            placeholder="Model id"
-                            className="inline-input"
-                            aria-label={`${card.id} model`}
-                            disabled={!card.executable}
-                          />
-                        </div>
-                      ) : null}
-                      <p className="muted-block">{card.authLabel}</p>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <div className="inline-controls">
-                <button type="button" className="inline-btn" onClick={() => void saveRoutingConfig()}>
-                  Save models &amp; default
-                </button>
-              </div>
+              <ProviderAiProvidersPanel
+                providers={providers}
+                routing={routing}
+                routingDraft={routingDraft}
+                setRoutingDraft={setRoutingDraft}
+                providerConfigStatus={providerConfigStatus}
+                providerEndpointDrafts={providerEndpointDrafts}
+                providerApiKeyDrafts={providerApiKeyDrafts}
+                updateProviderEndpointDraft={updateProviderEndpointDraft}
+                updateProviderApiKeyDraft={updateProviderApiKeyDraft}
+                toggleProvider={toggleProvider}
+                saveProviderEndpoint={saveProviderEndpoint}
+                saveProviderApiKey={saveProviderApiKey}
+                clearProviderApiKey={clearProviderApiKey}
+                setAiOptIn={setAiOptIn}
+                saveRoutingConfig={saveRoutingConfig}
+                showRoutingBar={false}
+                saveRoutingLabel="Save models & default"
+              />
 
               <h3 className="settings-subsection-title">Test prompt</h3>
               <div className="stacked-controls">

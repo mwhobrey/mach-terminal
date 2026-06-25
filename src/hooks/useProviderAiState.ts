@@ -73,6 +73,8 @@ type RoutingDraft = {
   ai_context_budget_chars: number;
 };
 
+export type ProviderRoutingDraftState = RoutingDraft;
+
 /**
  * Preserve user-entered API key drafts while refreshing descriptors from runtime.
  * Unknown provider ids are dropped; known ids keep existing drafts.

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import { normalizeQuickStartProfile, QUICKSTART_ROUTING, toQuickStartProviders } from "../core/onboarding";
-import { buildProviderCards, onboardingQuickStartFailedFallback, onboardingSaveFailedFallback, providerOptionSuffix, settingsLoadFailedFallback, type RoutingModelKey } from "../core/providerUiState";
 import { surfaceErrorMessage } from "../core/errors";
-import { PROVIDER_REGISTRY } from "../core/providers";
+import { onboardingQuickStartFailedFallback, onboardingSaveFailedFallback, settingsLoadFailedFallback } from "../core/providerUiState";
 import type { ProviderRoutingSettings, ProviderSettings, TerminalProfile } from "../core/terminal";
+import type { ProviderRoutingDraftState } from "../hooks/useProviderAiState";
+import { ProviderAiProvidersPanel } from "./ProviderAiProvidersPanel";
 import {
   providerApiKeySet,
   profileGet,
@@ -35,11 +36,20 @@ const SNIPPET_PWSH = MACH_MINIMAL_PROMPT_PWSH;
 const SNIPPET_BASH = MACH_MINIMAL_PROMPT_BASH;
 const SNIPPET_ZSH = MACH_MINIMAL_PROMPT_ZSH;
 
+type LiveProviderSettings = Omit<
+  ComponentProps<typeof ProviderAiProvidersPanel<ProviderRoutingDraftState>>,
+  "showRoutingBar" | "saveRoutingLabel" | "showSaveRouting"
+> & {
+  routing: ProviderRoutingSettings;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
   /** Called after successful save so parent can refresh provider descriptors and routing. */
   onSaved: () => void | Promise<void>;
+  /** When set, advanced AI provider fields use the same live-save path as Settings. */
+  liveProviderSettings?: LiveProviderSettings;
 };
 
 export function shouldShowOnboardingPwshCta(args: {
@@ -59,7 +69,7 @@ export function shouldDisablePwshPromptActions(args: {
   return args.loading || args.pwshHookBusy || args.pwshPromptDismissBusy;
 }
 
-export function FirstRunSetup({ open, onClose, onSaved }: Props) {
+export function FirstRunSetup({ open, onClose, onSaved, liveProviderSettings }: Props) {
   const [profile, setProfile] = useState<TerminalProfile>({ env: {}, font_size: 13 });
   const [providers, setProviders] = useState<ProviderSettings[]>([]);
   const [routing, setRouting] = useState<ProviderRoutingSettings>(QUICKSTART_ROUTING);
@@ -128,10 +138,6 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     };
   }, [open]);
 
-  const updateProvider = useCallback((id: string, patch: Partial<ProviderSettings>) => {
-    setProviders((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-  }, []);
-
   const save = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -143,24 +149,26 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
         font_size: profile.font_size,
         minimal_shell_prompt: profile.minimal_shell_prompt ?? false,
       });
-      await Promise.all(
-        providers.map(async (provider) => {
-          await providerSetEnabled(provider.id, provider.enabled);
-          await providerEndpointSet(provider.id, provider.endpoint ?? null);
-          const apiKey = providerApiKeyDrafts[provider.id]?.trim();
-          if (apiKey) {
-            await providerApiKeySet(provider.id, apiKey);
-          }
-        }),
-      );
-      await providerRoutingPatch({
-        default_provider: routing.default_provider,
-        ollama_model: routing.ollama_model,
-        openai_model: routing.openai_model,
-        anthropic_model: routing.anthropic_model,
-        custom_openai_model: routing.custom_openai_model,
-        ai_feature_enabled: routing.ai_feature_enabled,
-      });
+      if (!liveProviderSettings) {
+        await Promise.all(
+          providers.map(async (provider) => {
+            await providerSetEnabled(provider.id, provider.enabled);
+            await providerEndpointSet(provider.id, provider.endpoint ?? null);
+            const apiKey = providerApiKeyDrafts[provider.id]?.trim();
+            if (apiKey) {
+              await providerApiKeySet(provider.id, apiKey);
+            }
+          }),
+        );
+        await providerRoutingPatch({
+          default_provider: routing.default_provider,
+          ollama_model: routing.ollama_model,
+          openai_model: routing.openai_model,
+          anthropic_model: routing.anthropic_model,
+          custom_openai_model: routing.custom_openai_model,
+          ai_feature_enabled: routing.ai_feature_enabled,
+        });
+      }
       window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "done");
       await onSaved();
       onClose();
@@ -169,7 +177,7 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [onClose, onSaved, profile, providerApiKeyDrafts, providers, routing]);
+  }, [liveProviderSettings, onClose, onSaved, profile, providerApiKeyDrafts, providers, routing]);
 
   const quickStart = useCallback(async () => {
     setLoading(true);
@@ -268,24 +276,8 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
     pwshPromptDismissBusy,
   });
 
-  // Same canonical provider view-model the Settings modal uses, so onboarding rows
-  // share names/kinds/default badge/model-field mapping. Registry supplies display
-  // metadata; the editable draft (`providers`) supplies enabled/endpoint.
-  const providerCards = buildProviderCards(
-    providers.map((row) => {
-      const meta = PROVIDER_REGISTRY.find((entry) => entry.id === row.id);
-      return {
-        id: row.id,
-        name: meta?.name ?? row.id,
-        kind: meta?.kind ?? "custom",
-        status: row.enabled ? "available" : "disabled",
-        enabled: row.enabled,
-        envHint: row.api_key_env ?? meta?.envHint,
-        hasStoredKey: false,
-      };
-    }),
-    routing.default_provider,
-  );
+  // Advanced AI uses the shared live-save panel when wired from App (Settings parity).
+  const useLiveProviderSettings = Boolean(liveProviderSettings);
 
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !loading && !showSkip && onClose()}>
@@ -465,103 +457,28 @@ export function FirstRunSetup({ open, onClose, onSaved }: Props) {
             <>
               <h3>AI providers</h3>
               <p className="muted-block">
-                Optional and off by default. Configure a provider, pick a default, then opt in — all of this can be
-                changed later in Settings.
+                Optional and off by default. Changes save immediately — same as Settings.
               </p>
-              <div className="ai-routing-bar">
-                <label className="toggle-row ai-routing-optin">
-                  <input
-                    type="checkbox"
-                    checked={routing.ai_feature_enabled}
-                    onChange={(e) => setRouting((r) => ({ ...r, ai_feature_enabled: e.target.checked }))}
-                  />
-                  Enable AI features
-                </label>
-                <label className="field-row ai-routing-default">
-                  <span>Default provider</span>
-                  <select
-                    value={routing.default_provider}
-                    onChange={(e) => setRouting((r) => ({ ...r, default_provider: e.target.value }))}
-                  >
-                    {providerCards.map((card) => (
-                      <option key={card.id} value={card.id} disabled={!card.executable}>
-                        {card.name}
-                        {providerOptionSuffix(card.executable)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <ul className="provider-block-list">
-                {providerCards.map((card) => {
-                  const modelKey: RoutingModelKey | null = card.modelKey;
-                  const row = providers.find((entry) => entry.id === card.id);
-                  return (
-                    <li key={card.id}>
-                      <div className="provider-block-head">
-                        <span>
-                          {card.name}
-                          <small>
-                            {card.kind}
-                            {card.isDefault ? " · default" : ""}
-                          </small>
-                        </span>
-                        <label className="toggle-row">
-                          <input
-                            type="checkbox"
-                            checked={card.enabled}
-                            onChange={(e) => updateProvider(card.id, { enabled: e.target.checked })}
-                            disabled={!card.executable && !card.enabled}
-                          />
-                          {card.enabled ? "Enabled" : "Disabled"}
-                        </label>
-                      </div>
-                      <div className="provider-block-endpoint">
-                        <input
-                          type="text"
-                          className="inline-input"
-                          placeholder="Endpoint URL"
-                          aria-label={`${card.id} endpoint`}
-                          value={row?.endpoint ?? ""}
-                          onChange={(e) => updateProvider(card.id, { endpoint: e.target.value || undefined })}
-                          disabled={!card.executable}
-                        />
-                      </div>
-                      <div className="provider-block-endpoint">
-                        <input
-                          type="password"
-                          className="inline-input"
-                          placeholder="API key (stored securely)"
-                          aria-label={`${card.id} api key`}
-                          value={providerApiKeyDrafts[card.id] ?? ""}
-                          onChange={(e) =>
-                            setProviderApiKeyDrafts((current) => ({ ...current, [card.id]: e.target.value }))
-                          }
-                          disabled={!card.executable}
-                        />
-                      </div>
-                      {modelKey ? (
-                        <div className="provider-block-endpoint provider-block-model">
-                          <span className="provider-block-model-label">Model</span>
-                          <input
-                            type="text"
-                            className="inline-input"
-                            placeholder="Model id"
-                            aria-label={`${card.id} model`}
-                            value={routing[modelKey]}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setRouting((r) => ({ ...r, [modelKey]: value }));
-                            }}
-                            disabled={!card.executable}
-                          />
-                        </div>
-                      ) : null}
-                      <p className="muted-block">{card.authLabel}</p>
-                    </li>
-                  );
-                })}
-              </ul>
+              {useLiveProviderSettings && liveProviderSettings ? (
+                <ProviderAiProvidersPanel
+                  providers={liveProviderSettings.providers}
+                  routing={liveProviderSettings.routing}
+                  routingDraft={liveProviderSettings.routingDraft}
+                  setRoutingDraft={liveProviderSettings.setRoutingDraft}
+                  providerConfigStatus={liveProviderSettings.providerConfigStatus}
+                  providerEndpointDrafts={liveProviderSettings.providerEndpointDrafts}
+                  providerApiKeyDrafts={liveProviderSettings.providerApiKeyDrafts}
+                  updateProviderEndpointDraft={liveProviderSettings.updateProviderEndpointDraft}
+                  updateProviderApiKeyDraft={liveProviderSettings.updateProviderApiKeyDraft}
+                  toggleProvider={liveProviderSettings.toggleProvider}
+                  saveProviderEndpoint={liveProviderSettings.saveProviderEndpoint}
+                  saveProviderApiKey={liveProviderSettings.saveProviderApiKey}
+                  clearProviderApiKey={liveProviderSettings.clearProviderApiKey}
+                  setAiOptIn={liveProviderSettings.setAiOptIn}
+                  saveRoutingConfig={liveProviderSettings.saveRoutingConfig}
+                  saveRoutingLabel="Save models & default"
+                />
+              ) : null}
             </>
           ) : null}
         </section>

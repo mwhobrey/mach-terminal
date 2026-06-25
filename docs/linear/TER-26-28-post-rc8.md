@@ -5,6 +5,8 @@
 
 ## TER-26 — Provider UX unification (Track B)
 
+**Linear:** [TER-26](https://linear.app/mach-triage/issue/TER-26/unify-provideronboarding-status-strings-and-error-semantics) · Cycle 2
+
 **Title:** Unify provider/onboarding status strings and error semantics
 
 **Description:**  
@@ -22,6 +24,8 @@ Settings and onboarding share `buildProviderCards`, but onboarding still uses ba
 
 ## TER-27 — Phase 2 perf spike (Track C)
 
+**Linear:** [TER-27](https://linear.app/mach-triage/issue/TER-27/pty-flow-control-baseline-phase-2-perf-spike) · Cycle 2
+
 **Title:** PTY flow-control baseline + Phase 2 perf spike doc
 
 **Description:**  
@@ -37,6 +41,8 @@ Phase 0/1 hot path is shipped (WebGL, Channel, UTF-8 streaming). `MAX_PENDING_CH
 ---
 
 ## TER-28 — Dogfood → scripted smoke (Track D)
+
+**Linear:** [TER-28](https://linear.app/mach-triage/issue/TER-28/script-tab-focus-routing-and-cross-surface-provider-ux-smoke) · Cycle 2
 
 **Title:** Script tab-focus routing and cross-surface provider UX contracts
 
