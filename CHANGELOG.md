@@ -4,6 +4,8 @@ All notable changes to Mach Terminal are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0-rc.8] - 2026-06-25
+
 ### Added
 
 - **Hot-path:** Raw-bytes `Channel` transport for PTY output (`pty_subscribe_output`); WebGL xterm renderer (`@xterm/addon-webgl`) with DOM fallback; `npm run test:perf` pipeline throughput gate (~75 MiB/s debug, 50 MiB/s floor).

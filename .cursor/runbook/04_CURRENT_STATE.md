@@ -81,11 +81,9 @@ Nothing is documented as outright broken in the handoff/changelog; open items ar
 
 ## Immediate Next Steps (recommended priority)
 
-1. **Push + manual QA pass** — branch is 2 commits ahead of `origin/main` (rc.7 sprint + hot-path tranche). Run [`docs/manual-qa.md`](../docs/manual-qa.md) on Windows: cold multi-tab restore, tab switch focus, Commander xterm focus, WSL args restore (`-d Ubuntu`), PATH/mise repro.
-2. **Tag release candidate** — after QA green, tag `v0.1.0-rc.8` (or bump if rc.7 was already tagged remotely) covering TER-22/23/9/10/19/24/25 + hot-path work.
-3. **Phase 2 hot-path (only if profiling demands):** real PTY flow control (replace dead `MAX_PENDING_CHUNKS` path); native GPU grid spike (`alacritty_terminal` + `wgpu`) — not urgent until measured pain.
-4. **First-class app layer (provider UX unification).** Onboarding draft-save vs Settings live-save; shared status/error strings across surfaces.
-5. **Convert manual dogfood rows → scripted smoke** where feasible (tab-focus routing, settings/palette/surface coordination).
+1. **Phase 2 hot-path (only if profiling demands):** real PTY flow control (replace dead `MAX_PENDING_CHUNKS` path); native GPU grid spike (`alacritty_terminal` + `wgpu`) — not urgent until measured pain.
+2. **First-class app layer (provider UX unification).** Onboarding draft-save vs Settings live-save; shared status/error strings across surfaces.
+3. **Convert manual dogfood rows → scripted smoke** where feasible (tab-focus routing, settings/palette/surface coordination).
 
 ## Verification Before You Commit
 ```
