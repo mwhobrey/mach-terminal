@@ -36,17 +36,23 @@ describe("Terminal link safety smoke contracts", () => {
     });
   });
 
-  it("routes only accepted links into openers", () => {
+  it("routes only accepted links into openers on modifier click", () => {
     const openUrl = vi.fn();
     const openPath = vi.fn();
+    const click = { ctrlKey: true, metaKey: false };
 
-    const httpDecision = activateTerminalLink("https://example.com/path", { openUrl, openPath });
-    const fileDecision = activateTerminalLink("file:///etc/hosts", { openUrl, openPath });
-    const rejectedDecision = activateTerminalLink("javascript:alert(1)", { openUrl, openPath });
+    const httpDecision = activateTerminalLink("https://example.com/path", { openUrl, openPath }, click);
+    const fileDecision = activateTerminalLink("file:///etc/hosts", { openUrl, openPath }, click);
+    const rejectedDecision = activateTerminalLink("javascript:alert(1)", { openUrl, openPath }, click);
+    const plainClick = activateTerminalLink("https://example.com/path", { openUrl, openPath }, {
+      ctrlKey: false,
+      metaKey: false,
+    });
 
     expect(httpDecision.kind).toBe("http");
     expect(fileDecision.kind).toBe("file");
     expect(rejectedDecision.kind).toBe("rejected");
+    expect(plainClick.kind).toBe("rejected");
     expect(openUrl).toHaveBeenCalledWith("https://example.com/path");
     expect(openPath).toHaveBeenCalledWith("/etc/hosts");
     expect(openUrl).toHaveBeenCalledTimes(1);

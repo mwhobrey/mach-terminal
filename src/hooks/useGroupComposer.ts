@@ -18,6 +18,7 @@ import { isShellExitCommand } from "../core/shellExitCommand";
 import { composerOutputScrollIntentFromKeyboardEvent } from "../core/composerOutputScroll";
 import {
   composerPlaceholderForMode,
+  defaultSessionInputMode,
   inputModeUsesComposer,
   type SessionInputMode,
 } from "../core/inputMode";
@@ -27,8 +28,8 @@ import {
 } from "../core/composerAiIntent";
 import type { SessionCommandFailure } from "../core/sessionCommandOutcome";
 import { isAskFailureShortcut } from "../core/sessionCommandOutcome";
+import { isBroadcastArmed, type BroadcastMode } from "../core/broadcastMode";
 import type { PaneNode } from "../state/workspace";
-import { defaultSessionInputMode } from "../core/inputMode";
 
 const COMPOSER_HISTORY_WINDOW = 250;
 
@@ -46,7 +47,7 @@ export interface UseGroupComposerOptions {
   panes: PaneNode[];
   activePaneId: string;
   targetPaneId: string;
-  broadcastMode: boolean;
+  broadcastMode: BroadcastMode;
   sessionsById: Record<string, PtySessionInfo>;
   tabLabels: Record<string, string>;
   sessionInputModes: Record<string, SessionInputMode>;
@@ -157,7 +158,7 @@ export function useGroupComposer({
   }, [composerLocked]);
 
   const resolveSubmitSessionIds = useCallback((): string[] => {
-    if (broadcastMode) {
+    if (isBroadcastArmed(broadcastMode)) {
       const ids: string[] = [];
       for (const pane of panes) {
         if (!pane.sessionId) {
@@ -191,7 +192,7 @@ export function useGroupComposer({
       const payload = `${normalized.replace(/\n/g, "\r\n")}\r`;
       onSubmitToPty(sessionIds, payload);
       if (isShellExitCommand(normalized.trim())) {
-        if (broadcastMode) {
+        if (isBroadcastArmed(broadcastMode)) {
           onShellExitBroadcast?.(sessionIds);
         } else {
           onShellExitSubmitted?.();
@@ -201,7 +202,7 @@ export function useGroupComposer({
     setComposerDraft("");
     historyStateRef.current = createComposerHistoryState();
     resetCompletionState(null);
-    if (broadcastMode) {
+    if (broadcastMode === "once") {
       onBroadcastConsumed?.();
     }
     queueMicrotask(() => composerTextareaRef.current?.focus());

@@ -6,6 +6,9 @@ All notable changes to Mach Terminal are documented in this file.
 
 ### Added
 
+- **TER-25:** Terminal hyperlinks require Ctrl+click (Win/Linux) or Cmd+click (Mac) to open — Windows Terminal parity; plain click no longer launches browser/file handler.
+- **TER-9:** Command palette quick-launch entries for saved presets and detected shells (`preset:` / `shell:` command ids).
+- **TER-19:** Sticky broadcast mode (`off` | `once` | `sticky`) — click Broadcast for one-shot, Shift+click for sticky; `Ctrl/Cmd+Alt+Shift+B` arms sticky; palette disarm command; workspace layout migrates legacy `broadcastMode: boolean`.
 - **TER-11:** Multi-pane workspace — binary split tree (up to 6 panes/tab), draggable resize, unified group composer, **independent focus vs target** (`Ctrl+Alt+N` focus · `Ctrl+Alt+Shift+N` target on Windows), one-shot broadcast, `workspace_layout` schema v2.
 - `docs/manual-qa.md` and `docs/shell-integration.md` (content moved out of README).
 - Gitleaks secret scan in CI and `npm run security:gitleaks`; updater manifest decoupled from committed config (`MACH_UPDATER_ENDPOINT` at release only).
@@ -20,11 +23,15 @@ All notable changes to Mach Terminal are documented in this file.
 
 ### Fixed
 
+- **TER-22:** Windows PTY spawn refreshes `PATH` from User + Machine registry (WinGet/mise/scoop shims visible without Explorer restart); `profile.env` overlay preserved.
+- **TER-23:** New-tab / boot perf — shell picker uses cached `detect_shells` on mount; WSL distro probe times out at 2s; deferred shell prefetch; cached boot profile; `pty_spawn` skips redundant settings read when profile provided; picker loads in parallel with profile fetch.
 - **TER-6:** `Ctrl/Cmd+K` works from composer — global shortcut allowlist in `keymap.ts`.
 - **TER-7:** Split pane spawns an independent PTY (`createSessionInNewPane`) instead of mirroring `activeSession.id`.
 - **TER-8:** Tab switch collapses multi-pane layout via `collapseToSinglePane()`. *(Superseded by TER-11: tab switch no longer collapses splits.)*
 - **TER-1:** Instant default tab spawn restored; shell picker via Shift+click `+` / palette; cached `detect_shells`.
 - **TER-4:** Commander/xterm viewport realignment at scrollback bottom (`terminalViewport.ts`: tail detection + `refresh()` after pin).
+- **TER-24:** Commander/tmux xterm repaint stall — `refresh()` after every PTY write; visibility/focus recovery when WebView2 RAF throttles.
+- **TER-25:** Heuristic link provider off-by-one on xterm `provideLinks` coordinates — hover underline + Ctrl/Cmd+click now work in pwsh/WSL.
 - CI release-smoke: disable updater artifacts without signing keys; build `deb` only (AppImage/linuxdeploy often hangs on GHA).
 - CI reliability: release smoke runs on warmed `ubuntu-22.04` matrix leg (not a cold standalone job); `scripts/ci/install-linux-tauri-deps.sh` adds deb bundling deps; `swatinem/rust-cache` on Linux workflows; nightly burn-in threshold gates calibrated for TER-11 soak times and Windows GHA cold `npm run test` latency (orphan-PTY hardZero removed).
 - Release builds: inject updater `pubkey` via `enable-updater-build.mjs` (literal key required; `$UPDATER_PUBLIC_KEY` in JSON is not expanded). Skip Tier 2 OS cert env in `release.yml` until real certs exist.

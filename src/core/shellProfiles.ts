@@ -115,3 +115,11 @@ export function selectionForCandidateId(candidates: ShellCandidate[], id: string
   }
   return { shell: candidate.shell, args: [...candidate.args] };
 }
+
+export function shellCandidatePaletteId(candidateId: string): string {
+  return `shell:${candidateId}`;
+}
+
+export function parseShellCandidatePaletteId(commandId: string): string | null {
+  return commandId.startsWith("shell:") ? commandId.slice("shell:".length) : null;
+}

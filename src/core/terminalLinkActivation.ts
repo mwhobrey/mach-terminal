@@ -30,6 +30,18 @@ export interface TerminalLinkOpeners {
   openPath: (path: string) => Promise<unknown> | unknown;
 }
 
+/** Mouse event shape from xterm linkHandler / registerLinkProvider activate callbacks. */
+export type TerminalLinkMouseEvent = Pick<MouseEvent, "ctrlKey" | "metaKey">;
+
+function isMacPlatform(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("mac");
+}
+
+/** Windows Terminal parity: Cmd+click (Mac) or Ctrl+click (Win/Linux) opens links. */
+export function shouldActivateTerminalLink(event: TerminalLinkMouseEvent): boolean {
+  return isMacPlatform() ? event.metaKey : event.ctrlKey;
+}
+
 function decodeFileUri(uri: string): string | null {
   // file://host/path  OR  file:///C:/... / file:///etc/...
   const match = /^file:\/\/([^/]*)(\/.*)$/u.exec(uri);
@@ -90,11 +102,16 @@ export function resolveTerminalLinkActivation(uri: string): TerminalLinkActivati
 /**
  * Activate an OSC 8 / custom-provider hyperlink using the provided openers.
  * Rejected links silently no-op so opener misfires cannot toast-spam the UI.
+ * When `event` is provided, requires Ctrl/Cmd+click (TER-25).
  */
 export function activateTerminalLink(
   uri: string,
   openers: TerminalLinkOpeners,
+  event?: TerminalLinkMouseEvent,
 ): TerminalLinkActivationResult {
+  if (event && !shouldActivateTerminalLink(event)) {
+    return { kind: "rejected", reason: "modifier required" };
+  }
   const decision = resolveTerminalLinkActivation(uri);
   if (decision.kind === "http" && decision.target) {
     try {

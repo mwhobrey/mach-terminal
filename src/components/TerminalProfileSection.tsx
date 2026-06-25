@@ -3,7 +3,7 @@ import { profileGet, profilePatch, type TerminalProfile } from "../core/terminal
 import { ShellProfilePicker } from "./ShellProfilePicker";
 import {
   addShellPreset,
-  loadShellPresets,
+  fetchShellPresets,
   removeShellPreset,
   shellPresetDescription,
   type ShellPreset,
@@ -60,7 +60,7 @@ export function TerminalProfileSection({
         setArgs(profile.args ?? []);
         setCwd(profile.cwd ?? "");
         setFontSize(profile.font_size ?? DEFAULT_FONT_SIZE);
-        setPresets(loadShellPresets());
+        setPresets(await fetchShellPresets());
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load terminal profile");
@@ -157,14 +157,16 @@ export function TerminalProfileSection({
           className="inline-btn ghost"
           disabled={!presetName.trim() || !(shell ?? "").trim()}
           onClick={() => {
-            const next = addShellPreset({
-              name: presetName.trim(),
-              shell: shell!.trim(),
-              args,
-            });
-            setPresets(next);
-            setPresetName("");
-            onShellPresetsChanged?.();
+            void (async () => {
+              const next = await addShellPreset({
+                name: presetName.trim(),
+                shell: shell!.trim(),
+                args,
+              });
+              setPresets(next);
+              setPresetName("");
+              onShellPresetsChanged?.();
+            })();
           }}
         >
           Save current shell as preset
@@ -184,9 +186,11 @@ export function TerminalProfileSection({
                 type="button"
                 className="inline-btn ghost"
                 onClick={() => {
-                  const next = removeShellPreset(preset.id);
-                  setPresets(next);
-                  onShellPresetsChanged?.();
+                  void (async () => {
+                    const next = await removeShellPreset(preset.id);
+                    setPresets(next);
+                    onShellPresetsChanged?.();
+                  })();
                 }}
               >
                 Remove

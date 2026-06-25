@@ -44,6 +44,16 @@ export interface ShellCandidate {
   is_default: boolean;
 }
 
+/** Saved shell launch preset (Settings CRUD + palette quick-open). */
+export interface ShellPreset {
+  id: string;
+  name: string;
+  shell: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
 export interface PtySpawnRequest {
   profile?: TerminalProfile;
   cols?: number;
@@ -603,6 +613,14 @@ export async function shellIntegrationSettingsGet() {
 
 export async function shellIntegrationSettingsPatch(patch: ShellIntegrationPatch) {
   return invoke<ShellIntegrationSettings>("shell_integration_settings_patch", { patch });
+}
+
+export async function shellPresetsGet() {
+  return invoke<ShellPreset[]>("shell_presets_get");
+}
+
+export async function shellPresetsSet(presets: ShellPreset[]) {
+  return invoke<ShellPreset[]>("shell_presets_set", { presets });
 }
 
 export async function shellIntegrationInstall(shellKind: "pwsh" | "bash" | "zsh") {

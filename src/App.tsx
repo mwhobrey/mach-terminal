@@ -82,11 +82,13 @@ import {
   type RuntimeMetricsSnapshot,
   type PluginMetricsSnapshot,
   type SessionStatus,
+  type ShellCandidate,
   runtimeCapabilities,
   workspaceLayoutGet,
   workspaceLayoutSet,
   trimAiContextExcerpt,
   type AiPromptContextPayload,
+  type TerminalProfile,
 } from "./core/terminal";
 import {
   buildRestorableSessions,
@@ -105,7 +107,8 @@ import {
   setActivePane,
   setTargetPane,
   setBroadcastMode,
-  toggleBroadcastMode,
+  toggleBroadcastOnce,
+  armBroadcastSticky,
   setSplitRatioOnWorkspace,
   setPaneSession,
   selectSessionInWorkspace,
@@ -176,14 +179,19 @@ import { isAiAssistReady } from "./core/providerUiState";
 import { historyAiContract, useProviderAiState } from "./hooks/useProviderAiState";
 import { HISTORY_UI_LIMIT, prependHistoryEntry } from "./core/historySync";
 import { spawnProfileFromShellSelection, type ShellSpawnSelection } from "./core/spawnProfile";
-import { prefetchShellCandidates } from "./core/shellCandidatesCache";
+import { prefetchShellCandidates, loadShellCandidates } from "./core/shellCandidatesCache";
 import {
-  loadShellPresets,
+  fetchShellPresets,
   parseShellPresetPaletteId,
   shellPresetDescription,
   shellPresetPaletteId,
   type ShellPreset,
 } from "./core/shellPresets";
+import {
+  formatShellCommandPreview,
+  parseShellCandidatePaletteId,
+  shellCandidatePaletteId,
+} from "./core/shellProfiles";
 import { isTauri } from "./core/tauriRuntime";
 import {
   appendCommandSubmitted,
@@ -236,6 +244,7 @@ function App() {
   sessionBuffersRef.current = sessionBuffers;
   const composerDraftRef = useRef("");
   const createSessionInFlightRef = useRef(false);
+  const cachedProfileRef = useRef<TerminalProfile | null>(null);
   const splitSessionInFlightRef = useRef(false);
   const lastPaneSplitAtRef = useRef(0);
   const focusGroupComposerRef = useRef<(() => void) | null>(null);
@@ -282,7 +291,8 @@ function App() {
   const [aiPendingAttachments, setAiPendingAttachments] = useState<Record<string, AiContextAttachment[]>>({});
   const [aiBehaviorSettings, setAiBehaviorSettings] = useState<AiBehaviorSettings>(() => loadAiBehaviorSettings());
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [shellPresets, setShellPresets] = useState<ShellPreset[]>(() => loadShellPresets());
+  const [shellPresets, setShellPresets] = useState<ShellPreset[]>([]);
+  const [detectedShells, setDetectedShells] = useState<ShellCandidate[]>([]);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -707,7 +717,7 @@ function App() {
         setTerminalFontSize(initialProfile.font_size);
         setMinimalShellPrompt(initialProfile.minimal_shell_prompt ?? false);
         setShowComposerAssistMetrics(initialProfile.show_composer_assist_metrics ?? false);
-        prefetchShellCandidates();
+        cachedProfileRef.current = initialProfile;
         let storedWorkspace: string | null = null;
         const fromDisk = await workspaceLayoutGet();
         if (fromDisk) {
@@ -832,6 +842,9 @@ function App() {
         }
         const metrics = await runtimeMetricsSnapshot();
         setRuntimeMetrics(metrics);
+        prefetchShellCandidates();
+        void loadShellCandidates().then(setDetectedShells);
+        void fetchShellPresets().then(setShellPresets);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to load runtime capabilities.";
         setRuntimeError(message);
@@ -979,6 +992,8 @@ function App() {
     let markerUnlisten: (() => void) | undefined;
     let contextUnlisten: (() => void) | undefined;
 
+    let visibilityCleanup: (() => void) | undefined;
+
     const bindEvents = async () => {
       const flushPendingOutput = () => {
         const updates: Record<string, string> = {};
@@ -1016,6 +1031,24 @@ function App() {
         } else {
           rafFlushRef.current = null;
         }
+      };
+
+      const kickOutputFlush = () => {
+        if (document.visibilityState === "hidden") {
+          return;
+        }
+        const hasPending = Object.values(pendingOutputRef.current).some((chunks) => chunks.length > 0);
+        if (!hasPending || rafFlushRef.current !== null) {
+          return;
+        }
+        rafFlushRef.current = window.requestAnimationFrame(flushPendingOutput);
+      };
+
+      document.addEventListener("visibilitychange", kickOutputFlush);
+      window.addEventListener("focus", kickOutputFlush);
+      visibilityCleanup = () => {
+        document.removeEventListener("visibilitychange", kickOutputFlush);
+        window.removeEventListener("focus", kickOutputFlush);
       };
 
       outputUnlisten = await onPtyOutput((event) => {
@@ -1159,6 +1192,7 @@ function App() {
     void bindEvents();
 
     return () => {
+      visibilityCleanup?.();
       if (rafFlushRef.current !== null) {
         window.cancelAnimationFrame(rafFlushRef.current);
       }
@@ -1262,7 +1296,7 @@ function App() {
    * replacement shell where the old one left off per the live-cwd map.
    */
   const refreshShellPresets = useCallback(() => {
-    setShellPresets(loadShellPresets());
+    void fetchShellPresets().then(setShellPresets);
   }, []);
 
   const createSessionAt = useCallback(async (cwdOverride: string | null, shellSelection?: ShellSpawnSelection) => {
@@ -1271,7 +1305,8 @@ function App() {
     }
     createSessionInFlightRef.current = true;
     try {
-      const profile = await profileGet();
+      const profile = cachedProfileRef.current ?? (await profileGet());
+      cachedProfileRef.current = profile;
       setTerminalFontSize(profile.font_size);
       let spawnProfile = shellSelection ? spawnProfileFromShellSelection(profile, shellSelection) : profile;
       if (cwdOverride && cwdOverride.length > 0) {
@@ -1461,7 +1496,8 @@ function App() {
       lastPaneSplitAtRef.current = now;
       splitSessionInFlightRef.current = true;
       try {
-        const profile = await profileGet();
+        const profile = cachedProfileRef.current ?? (await profileGet());
+        cachedProfileRef.current = profile;
         setTerminalFontSize(profile.font_size);
         const displacedId = displacedSessionIdForSplitCap(persistSnapshotRef.current.workspace);
         const created = await ptySpawn({ profile });
@@ -1735,11 +1771,13 @@ function App() {
     setTerminalFontSize(profile.font_size);
     setMinimalShellPrompt(profile.minimal_shell_prompt ?? false);
     setShowComposerAssistMetrics(profile.show_composer_assist_metrics ?? false);
+    cachedProfileRef.current = profile;
   }, [initializeProviderAiState]);
 
   const setMinimalShellPromptPreference = useCallback(async (enabled: boolean) => {
     try {
       const updated = await profilePatch({ minimal_shell_prompt: enabled });
+      cachedProfileRef.current = updated;
       setMinimalShellPrompt(updated.minimal_shell_prompt ?? enabled);
     } catch (error) {
       setRuntimeError(error instanceof Error ? error.message : "Failed to update profile.");
@@ -1749,6 +1787,7 @@ function App() {
   const setShowComposerAssistMetricsPreference = useCallback(async (enabled: boolean) => {
     try {
       const updated = await profilePatch({ show_composer_assist_metrics: enabled });
+      cachedProfileRef.current = updated;
       setShowComposerAssistMetrics(updated.show_composer_assist_metrics ?? enabled);
     } catch (error) {
       setRuntimeError(error instanceof Error ? error.message : "Failed to update profile.");
@@ -1969,7 +2008,19 @@ function App() {
       if (presetId) {
         const preset = shellPresets.find((entry) => entry.id === presetId);
         if (preset) {
-          await createSessionAt(null, { shell: preset.shell, args: preset.args });
+          await createSessionAt(preset.cwd ?? null, {
+            shell: preset.shell,
+            args: preset.args,
+            env: preset.env,
+          });
+        }
+        return;
+      }
+      const shellCandidateId = parseShellCandidatePaletteId(String(commandId));
+      if (shellCandidateId) {
+        const candidate = detectedShells.find((entry) => entry.id === shellCandidateId);
+        if (candidate?.available) {
+          await createSessionAt(null, { shell: candidate.shell, args: candidate.args });
         }
         return;
       }
@@ -2037,7 +2088,13 @@ function App() {
           await closeActivePane();
           break;
         case "pane.broadcast":
-          setWorkspace((current) => toggleBroadcastMode(current));
+          setWorkspace((current) => toggleBroadcastOnce(current));
+          break;
+        case "pane.broadcastSticky":
+          setWorkspace((current) => armBroadcastSticky(current));
+          break;
+        case "pane.broadcastDisarm":
+          setWorkspace((current) => setBroadcastMode(current, "off"));
           break;
         case "palette.toggle":
           setPaletteOpen((current) => !current);
@@ -2099,6 +2156,7 @@ function App() {
       createSessionAt,
       cycleActiveInputMode,
       openNewTabPicker,
+      detectedShells,
       shellPresets,
       dispatchTerminalUiRequest,
       explainCommand,
@@ -2149,7 +2207,14 @@ function App() {
       label: `Open shell: ${preset.name}`,
       description: shellPresetDescription(preset),
     }));
-    const commands = [...baseCommands, ...presetCommands];
+    const shellCommands = detectedShells
+      .filter((candidate) => candidate.available)
+      .map((candidate) => ({
+        id: shellCandidatePaletteId(candidate.id),
+        label: `Open shell: ${candidate.label}`,
+        description: formatShellCommandPreview(candidate.shell, candidate.args),
+      }));
+    const commands = [...baseCommands, ...presetCommands, ...shellCommands];
     return commands
       .filter((command) => {
         if (
@@ -2169,7 +2234,7 @@ function App() {
           shortcut: commandShortcut ?? (matchingBinding ? formatShortcut(matchingBinding) : undefined),
         };
       });
-  }, [aiAssistEnabled, shellPresets]);
+  }, [aiAssistEnabled, detectedShells, shellPresets]);
 
   const globalShortcutItems = useMemo(
     () => commandPaletteItems.filter((command) => DEFAULT_KEYMAP.some((binding) => binding.command === command.id)),
@@ -2252,7 +2317,7 @@ function App() {
     },
     onRequestComposerCompletion: requestComposerCompletion,
     onBroadcastConsumed: () => {
-      setWorkspace((current) => setBroadcastMode(current, false));
+      setWorkspace((current) => setBroadcastMode(current, "off"));
     },
   });
 
@@ -2420,7 +2485,8 @@ function App() {
                 void fixCommandToChat(draft);
               }
             }}
-            onToggleBroadcast={() => setWorkspace((current) => toggleBroadcastMode(current))}
+            onToggleBroadcast={() => setWorkspace((current) => toggleBroadcastOnce(current))}
+            onArmBroadcastSticky={() => setWorkspace((current) => armBroadcastSticky(current))}
             onSelectPanePill={(paneId) => setWorkspace((current) => setTargetPane(current, paneId))}
             onKeyDown={handleGroupComposerKeyDown}
           />
@@ -2550,6 +2616,7 @@ function App() {
           pluginTelemetry={pluginTelemetry}
           runPluginDemo={runPluginDemo}
           onProfileSaved={(savedProfile) => {
+            cachedProfileRef.current = savedProfile;
             setTerminalFontSize(savedProfile.font_size);
             setMinimalShellPrompt(savedProfile.minimal_shell_prompt ?? false);
             setShowComposerAssistMetrics(savedProfile.show_composer_assist_metrics ?? false);

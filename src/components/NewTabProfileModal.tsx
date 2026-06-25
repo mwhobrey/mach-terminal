@@ -16,7 +16,7 @@ type Props = {
 export function NewTabProfileModal({ open, onClose, onConfirm }: Props) {
   const [shell, setShell] = useState<string | undefined>(undefined);
   const [args, setArgs] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +25,7 @@ export function NewTabProfileModal({ open, onClose, onConfirm }: Props) {
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    setProfileLoading(true);
     setError(null);
     void profileGet()
       .then((profile) => {
@@ -43,7 +43,7 @@ export function NewTabProfileModal({ open, onClose, onConfirm }: Props) {
       })
       .finally(() => {
         if (!cancelled) {
-          setLoading(false);
+          setProfileLoading(false);
         }
       });
     return () => {
@@ -68,7 +68,7 @@ export function NewTabProfileModal({ open, onClose, onConfirm }: Props) {
     return null;
   }
 
-  const disabled = loading || busy;
+  const disabled = busy;
 
   return (
     <div
@@ -89,18 +89,16 @@ export function NewTabProfileModal({ open, onClose, onConfirm }: Props) {
       >
         <h2 id="new-tab-profile-title">New tab</h2>
         <p className="muted-block">Choose which shell to run in this tab. Your default profile cwd and env still apply.</p>
-        {loading ? <p className="muted-block">Loading profile…</p> : null}
+        {profileLoading ? <p className="muted-block">Loading default shell…</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
-        {!loading ? (
-          <ShellProfilePicker
-            shell={shell}
-            args={args}
-            onChange={(selection) => {
-              setShell(selection.shell);
-              setArgs(selection.args);
-            }}
-          />
-        ) : null}
+        <ShellProfilePicker
+          shell={shell}
+          args={args}
+          onChange={(selection) => {
+            setShell(selection.shell);
+            setArgs(selection.args);
+          }}
+        />
         <div className="modal-actions">
           <button type="button" className="inline-btn ghost" onClick={onClose} disabled={disabled}>
             Cancel

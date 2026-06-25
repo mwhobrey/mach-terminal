@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   activateTerminalLink,
   resolveTerminalLinkActivation,
+  shouldActivateTerminalLink,
 } from "./terminalLinkActivation";
 
 describe("resolveTerminalLinkActivation", () => {
@@ -91,6 +92,32 @@ describe("resolveTerminalLinkActivation", () => {
   });
 });
 
+const WIN_CLICK = { ctrlKey: true, metaKey: false } as const;
+const MAC_CLICK = { ctrlKey: false, metaKey: true } as const;
+
+function linkClickEvent(): { ctrlKey: boolean; metaKey: boolean } {
+  return typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("mac")
+    ? MAC_CLICK
+    : WIN_CLICK;
+}
+
+describe("shouldActivateTerminalLink", () => {
+  it("requires ctrl on non-mac platforms", () => {
+    const isMac = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("mac");
+    if (isMac) {
+      expect(shouldActivateTerminalLink({ ctrlKey: true, metaKey: false })).toBe(false);
+      expect(shouldActivateTerminalLink({ ctrlKey: false, metaKey: true })).toBe(true);
+    } else {
+      expect(shouldActivateTerminalLink({ ctrlKey: true, metaKey: false })).toBe(true);
+      expect(shouldActivateTerminalLink({ ctrlKey: false, metaKey: true })).toBe(false);
+    }
+  });
+
+  it("rejects plain click without modifier", () => {
+    expect(shouldActivateTerminalLink({ ctrlKey: false, metaKey: false })).toBe(false);
+  });
+});
+
 describe("activateTerminalLink", () => {
   function makeOpeners() {
     return {
@@ -99,17 +126,25 @@ describe("activateTerminalLink", () => {
     };
   }
 
-  it("routes https to openUrl", () => {
+  it("routes https to openUrl when modifier click", () => {
     const openers = makeOpeners();
-    const r = activateTerminalLink("https://example.com", openers);
+    const r = activateTerminalLink("https://example.com", openers, linkClickEvent());
     expect(r.kind).toBe("http");
     expect(openers.openUrl).toHaveBeenCalledWith("https://example.com");
     expect(openers.openPath).not.toHaveBeenCalled();
   });
 
-  it("routes file:// to openPath after decoding", () => {
+  it("does not open on plain click when event is provided", () => {
     const openers = makeOpeners();
-    const r = activateTerminalLink("file:///etc/hosts", openers);
+    const r = activateTerminalLink("https://example.com", openers, { ctrlKey: false, metaKey: false });
+    expect(r.kind).toBe("rejected");
+    expect(r.reason).toBe("modifier required");
+    expect(openers.openUrl).not.toHaveBeenCalled();
+  });
+
+  it("routes file:// to openPath after decoding when modifier click", () => {
+    const openers = makeOpeners();
+    const r = activateTerminalLink("file:///etc/hosts", openers, linkClickEvent());
     expect(r.kind).toBe("file");
     expect(openers.openPath).toHaveBeenCalledWith("/etc/hosts");
     expect(openers.openUrl).not.toHaveBeenCalled();

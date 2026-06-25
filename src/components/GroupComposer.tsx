@@ -4,6 +4,7 @@ import type { ComposerSubmitKind } from "../core/composerAiIntent";
 import type { SessionInputMode } from "../core/inputMode";
 import type { SessionCommandFailure } from "../core/sessionCommandOutcome";
 import { formatPaneFocusShortcut, formatPaneTargetShortcut } from "../core/keymap";
+import { isBroadcastArmed, type BroadcastMode, broadcastModeLabel } from "../core/broadcastMode";
 import type { PanePill } from "../hooks/useGroupComposer";
 
 export interface GroupComposerViewProps {
@@ -22,9 +23,10 @@ export interface GroupComposerViewProps {
   showComposerAssistMetrics?: boolean;
   commandFailure?: SessionCommandFailure | null;
   aiAssistEnabled: boolean;
-  broadcastMode: boolean;
+  broadcastMode: BroadcastMode;
   panePills: PanePill[];
   onToggleBroadcast?: () => void;
+  onArmBroadcastSticky?: () => void;
   onSelectPanePill?: (paneId: string) => void;
   onToggleComposerSubmitKind?: () => void;
   onAskAboutFailure?: () => void;
@@ -55,6 +57,7 @@ export function GroupComposer({
   broadcastMode,
   panePills,
   onToggleBroadcast,
+  onArmBroadcastSticky,
   onSelectPanePill,
   onToggleComposerSubmitKind,
   onAskAboutFailure,
@@ -109,18 +112,24 @@ export function GroupComposer({
           ))}
           <button
             type="button"
-            className={`group-composer-broadcast-toggle ${broadcastMode ? "active" : ""}`}
-            aria-pressed={broadcastMode}
-            title="Broadcast armed — next Enter goes to all operator panes, then turns off"
-            onClick={() => onToggleBroadcast?.()}
+            className={`group-composer-broadcast-toggle ${broadcastMode === "once" ? "active" : ""} ${broadcastMode === "sticky" ? "sticky" : ""}`}
+            aria-pressed={isBroadcastArmed(broadcastMode)}
+            title={`${broadcastModeLabel(broadcastMode)} — click one-shot, Shift+click sticky`}
+            onClick={(event) => {
+              if (event.shiftKey) {
+                onArmBroadcastSticky?.();
+              } else {
+                onToggleBroadcast?.();
+              }
+            }}
           >
-            Broadcast
+            {broadcastMode === "sticky" ? "Broadcast*" : "Broadcast"}
           </button>
         </div>
         </>
       ) : null}
       <div
-        className={`terminal-composer terminal-composer-kind-${composerSubmitKind} ${broadcastMode ? "broadcast-on" : ""}`}
+        className={`terminal-composer terminal-composer-kind-${composerSubmitKind} ${isBroadcastArmed(broadcastMode) ? "broadcast-on" : ""}`}
       >
         {commandFailure && onAskAboutFailure && aiAssistEnabled ? (
           <div className="terminal-failure-hint">

@@ -3,6 +3,7 @@ import type { TerminalProfile } from "./terminal";
 export interface ShellSpawnSelection {
   shell: string | undefined;
   args: string[];
+  env?: Record<string, string>;
 }
 
 /** Merge a saved profile with a one-off shell/args choice for a new tab spawn. */
@@ -18,5 +19,8 @@ export function spawnProfileFromShellSelection(
     delete profile.shell;
   }
   profile.args = selection.args.length > 0 ? [...selection.args] : undefined;
+  if (selection.env) {
+    profile.env = { ...profile.env, ...selection.env };
+  }
   return profile;
 }

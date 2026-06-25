@@ -1,3 +1,4 @@
+use crate::child_env;
 use crate::history_store;
 use crate::models::{
     AiContextEvent, HistoryEntry, HistoryQueryRequest, PtyCommandMarkerEvent, PtyCommandMarkerPhase, PtyCwdChangedEvent,
@@ -136,12 +137,9 @@ impl SessionManager {
         if let Some(cwd_value) = &cwd {
             command_builder.cwd(PathBuf::from(cwd_value));
         }
-        // Keep shell env as close as possible to parent process defaults so PATH/tooling
-        // resolution (npm, git, language toolchains) matches normal terminal sessions.
-        for (key, value) in std::env::vars() {
-            command_builder.env(key, value);
-        }
-        for (key, value) in profile.env {
+        // Process env with Windows registry PATH refresh; profile.env overlays last.
+        let child_env = child_env::build_child_environment(profile.env.clone());
+        for (key, value) in child_env {
             command_builder.env(key, value);
         }
         if profile.minimal_shell_prompt {

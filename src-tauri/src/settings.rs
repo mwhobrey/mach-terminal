@@ -1,6 +1,7 @@
 use crate::models::{
     AppSettings, LegacyAppSettings, ProfilePatch, ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings,
-    SettingsSchemaDebug, ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, SETTINGS_SCHEMA_VERSION,
+    SettingsSchemaDebug, ShellIntegrationPatch, ShellIntegrationSettings, ShellPreset, TerminalProfile,
+    SETTINGS_SCHEMA_VERSION,
 };
 use reqwest::Url;
 use std::fs;
@@ -240,6 +241,7 @@ pub fn load_settings_from_path(path: &Path) -> Result<AppSettings, String> {
                         providers: legacy.providers,
                         provider_routing: legacy.provider_routing,
                         shell_integration: ShellIntegrationSettings::default(),
+                        shell_presets: Vec::new(),
                     },
                     true,
                 )
@@ -379,6 +381,40 @@ pub fn patch_shell_integration_settings(
             settings.shell_integration.onboarding_install_prompt_seen = seen;
         }
         Ok(settings.shell_integration.clone())
+    })
+}
+
+fn validate_shell_presets(presets: &[ShellPreset]) -> Result<(), String> {
+    for preset in presets {
+        if preset.id.trim().is_empty() {
+            return Err("shell preset id is required".to_string());
+        }
+        if preset.name.trim().is_empty() {
+            return Err("shell preset name is required".to_string());
+        }
+        if preset.shell.trim().is_empty() {
+            return Err("shell preset shell is required".to_string());
+        }
+    }
+    if let Some(duplicate) = presets
+        .iter()
+        .map(|preset| preset.id.as_str())
+        .find(|preset_id| presets.iter().filter(|preset| preset.id.as_str() == *preset_id).count() > 1)
+    {
+        return Err(format!("duplicate shell preset id `{duplicate}`"));
+    }
+    Ok(())
+}
+
+pub fn get_shell_presets(app: &AppHandle) -> Result<Vec<ShellPreset>, String> {
+    Ok(load_settings(app)?.shell_presets)
+}
+
+pub fn set_shell_presets(app: &AppHandle, presets: Vec<ShellPreset>) -> Result<Vec<ShellPreset>, String> {
+    validate_shell_presets(&presets)?;
+    update_settings(app, |settings| {
+        settings.shell_presets = presets.clone();
+        Ok(presets)
     })
 }
 

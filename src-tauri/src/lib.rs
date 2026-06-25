@@ -1,4 +1,7 @@
 pub mod models;
+mod child_env;
+#[cfg(windows)]
+mod win_env;
 pub mod composer_completion;
 pub mod history_store;
 pub mod input_sanitize;
@@ -20,7 +23,7 @@ use crate::models::{
     AiExecuteRequest, AiExecuteResponse, HistoryEntry, HistoryQueryRequest, ProfilePatch, ProviderApiKeyStatus,
     ProviderDescriptor, ProviderRoutingPatch, ProviderRoutingSettings, ProviderSettings, PtySessionInfo,
     PtySpawnRequest, RuntimeCapabilitiesSnapshot, RuntimeDebugSnapshot, RuntimeMetricsSnapshot, SettingsSchemaDebug,
-    ShellIntegrationPatch, ShellIntegrationSettings, TerminalProfile, WorkspaceLayout, PluginExecutionResult,
+    ShellIntegrationPatch, ShellIntegrationSettings, ShellPreset, TerminalProfile, WorkspaceLayout, PluginExecutionResult,
     PluginExecuteRequest, PluginGrantRequest, PluginGrantSnapshot, PluginMetricsSnapshot, PluginPolicyDecision,
 };
 use crate::composer_completion::{ComposerCompletionRequest, ComposerCompletionResponse};
@@ -77,6 +80,18 @@ fn shell_integration_settings_patch(
     patch: ShellIntegrationPatch,
 ) -> Result<ShellIntegrationSettings, String> {
     settings::patch_shell_integration_settings(&app, patch)
+}
+
+#[tauri::command]
+#[instrument(skip(app))]
+fn shell_presets_get(app: AppHandle) -> Result<Vec<ShellPreset>, String> {
+    settings::get_shell_presets(&app)
+}
+
+#[tauri::command]
+#[instrument(skip(app, presets))]
+fn shell_presets_set(app: AppHandle, presets: Vec<ShellPreset>) -> Result<Vec<ShellPreset>, String> {
+    settings::set_shell_presets(&app, presets)
 }
 
 #[tauri::command]
@@ -213,7 +228,11 @@ fn pty_spawn(
     manager: State<'_, SessionManager>,
     request: PtySpawnRequest,
 ) -> Result<PtySessionInfo, String> {
-    let default_profile = settings::get_profile(&app)?;
+    let default_profile = if request.profile.is_some() {
+        TerminalProfile::default()
+    } else {
+        settings::get_profile(&app)?
+    };
     manager.spawn_session(&app, request, default_profile)
 }
 
@@ -439,6 +458,8 @@ pub fn run() {
             shell_context::shell_context_snapshot,
             shell_integration_settings_get,
             shell_integration_settings_patch,
+            shell_presets_get,
+            shell_presets_set,
             shell_integration::shell_integration_materialize_scripts,
             shell_integration::shell_integration_status,
             shell_integration::shell_integration_install,

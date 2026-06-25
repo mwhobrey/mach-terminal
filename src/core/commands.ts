@@ -12,6 +12,8 @@ export type AppCommandId =
   | "pane.split.row"
   | "pane.close"
   | "pane.broadcast"
+  | "pane.broadcastSticky"
+  | "pane.broadcastDisarm"
   | "pane.focus1"
   | "pane.focus2"
   | "pane.focus3"
@@ -137,6 +139,17 @@ export const APP_COMMANDS: AppCommand[] = [
     label: "Arm broadcast (one-shot)",
     shortcut: "Ctrl/Cmd+Shift+B or Alt+Shift+B",
     description: "Next composer Enter sends to every operator pane in this tab, then broadcast turns off.",
+  },
+  {
+    id: "pane.broadcastSticky",
+    label: "Arm sticky broadcast",
+    shortcut: "Ctrl/Cmd+Alt+Shift+B",
+    description: "Every composer Enter sends to all operator panes until you disarm broadcast.",
+  },
+  {
+    id: "pane.broadcastDisarm",
+    label: "Disarm broadcast",
+    description: "Turn off one-shot or sticky broadcast for this tab.",
   },
   ...PANE_FOCUS_COMMANDS,
   ...PANE_TARGET_COMMANDS,

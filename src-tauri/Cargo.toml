@@ -39,6 +39,10 @@ opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic", "trace"] }
 keyring = "3"
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Environment"] }
+
 [dev-dependencies]
 tempfile = "3"
 

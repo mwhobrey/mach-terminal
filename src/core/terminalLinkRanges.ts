@@ -446,6 +446,27 @@ export function findAbsoluteFilePathsInLine(line: string): FilePathRange[] {
  * Build ordered link descriptors for one buffer line: all HTTP ranges, then file
  * ranges that do not overlap any HTTP span (HTTP wins on overlap).
  */
+/** 0-based `IBuffer.getLine` index from xterm `provideLinks` line number (1-based). */
+export function bufferLineIndexFromProviderLine(bufferLineNumber: number): number {
+  return bufferLineNumber - 1;
+}
+
+/** Map scraped 0-based column span to xterm's 1-based `IBufferRange`. */
+export function xtermBufferRangeForScrapedSpan(
+  bufferLineNumber: number,
+  start: number,
+  endExclusive: number,
+): {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+} {
+  const y = bufferLineNumber;
+  return {
+    start: { x: start + 1, y },
+    end: { x: endExclusive, y },
+  };
+}
+
 export function mergeHttpAndFileLinksForLine(line: string): MergedTerminalLink[] {
   const http = findHttpUrlsInLine(line);
   const files = findAbsoluteFilePathsInLine(line);

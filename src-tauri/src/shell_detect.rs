@@ -198,11 +198,20 @@ fn find_git_bash() -> Option<PathBuf> {
 #[cfg(target_os = "windows")]
 fn list_wsl_distros(wsl_exe: &str) -> Vec<String> {
     use std::process::Command;
-    let output = match Command::new(wsl_exe).args(["-l", "-q"]).output() {
-        Ok(output) if output.status.success() => output,
-        _ => return Vec::new(),
-    };
-    parse_wsl_distros(&output.stdout)
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    const WSL_LIST_TIMEOUT: Duration = Duration::from_secs(2);
+    let wsl_exe = wsl_exe.to_string();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let output = Command::new(&wsl_exe).args(["-l", "-q"]).output();
+        let _ = tx.send(output);
+    });
+    match rx.recv_timeout(WSL_LIST_TIMEOUT) {
+        Ok(Ok(output)) if output.status.success() => parse_wsl_distros(&output.stdout),
+        _ => Vec::new(),
+    }
 }
 
 /// Parse `wsl.exe -l -q` stdout. The stream is UTF-16LE (often with a BOM and

@@ -12,6 +12,7 @@ import type { UiSurfaceState, UiSurfaceStatePatch } from "../core/uiSurfaceState
 import type { SessionInputMode } from "../core/inputMode";
 import { defaultSessionInputMode } from "../core/inputMode";
 import type { ComposerSubmitKind } from "../core/composerAiIntent";
+import { isBroadcastArmed } from "../core/broadcastMode";
 import type { SessionCommandFailure } from "../core/sessionCommandOutcome";
 import type { GroupLayoutSnapshot } from "../state/workspace";
 import { isPaneLeaf, isSplitBranch, type SplitNode } from "../state/splitTree";
@@ -94,7 +95,7 @@ export function PaneLayout({
       "split-pane",
       isFocused ? "focused" : "",
       isTarget ? "target-pane" : "",
-      layout.broadcastMode ? "broadcast-active" : "",
+      isBroadcastArmed(layout.broadcastMode) ? "broadcast-active" : "",
     ]
       .filter(Boolean)
       .join(" ");

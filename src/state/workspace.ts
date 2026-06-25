@@ -1,6 +1,7 @@
 export type SplitDirection = "row" | "column";
 
 import type { SessionInputMode } from "../core/inputMode";
+import { type BroadcastMode, normalizeBroadcastMode } from "../core/broadcastMode";
 import {
   closePaneAt,
   collectPaneLeaves,
@@ -40,8 +41,8 @@ export interface TabGroup {
   activePaneId: string;
   /** Composer submit destination (TER-15). Defaults to activePaneId on focus. */
   targetPaneId: string;
-  /** When true, composer Enter sends to all operator panes (TER-16). */
-  broadcastMode: boolean;
+  /** Composer broadcast: off, one-shot (TER-16), or sticky (TER-19). */
+  broadcastMode: BroadcastMode;
   /** Direction used for the next split operation. */
   defaultSplitDirection: SplitDirection;
 }
@@ -56,7 +57,7 @@ export interface GroupLayoutSnapshot {
   layout: SplitNode;
   activePaneId: string;
   targetPaneId: string;
-  broadcastMode: boolean;
+  broadcastMode: BroadcastMode;
   /** Direction for the next split; derived from group.defaultSplitDirection. */
   splitDirection: SplitDirection;
   /** Flat pane list for legacy callers (walk order). */
@@ -92,7 +93,7 @@ export interface TabGroupSnapshot {
   activePaneId: string;
   splitDirection?: SplitDirection;
   targetPaneId?: string;
-  broadcastMode?: boolean;
+  broadcastMode?: BroadcastMode | boolean;
 }
 
 export interface RestorableSession {
@@ -160,7 +161,7 @@ export function activeGroupLayout(state: WorkspaceState): GroupLayoutSnapshot {
       layout,
       activePaneId: DEFAULT_ROOT_PANE,
       targetPaneId: DEFAULT_ROOT_PANE,
-      broadcastMode: false,
+      broadcastMode: "off",
       splitDirection: "column",
       panes: [{ id: DEFAULT_ROOT_PANE, sessionId: null }],
     };
@@ -202,7 +203,7 @@ function createSinglePaneGroup(sessionId: string | null = null, groupId = newTab
     layout,
     activePaneId: paneId,
     targetPaneId: paneId,
-    broadcastMode: false,
+    broadcastMode: "off",
     defaultSplitDirection: "column",
   };
 }
@@ -294,14 +295,29 @@ export function focusAndTargetPane(state: WorkspaceState, paneId: string): Works
   return setActivePane(setTargetPane(state, paneId), paneId);
 }
 
-export function toggleBroadcastMode(state: WorkspaceState): WorkspaceState {
-  return updateActiveGroup(state, (group) => ({ ...group, broadcastMode: !group.broadcastMode }));
+export function toggleBroadcastOnce(state: WorkspaceState): WorkspaceState {
+  return updateActiveGroup(state, (group) => ({
+    ...group,
+    broadcastMode: group.broadcastMode === "once" ? "off" : "once",
+  }));
 }
 
-export function setBroadcastMode(state: WorkspaceState, enabled: boolean): WorkspaceState {
+export function armBroadcastSticky(state: WorkspaceState): WorkspaceState {
+  return updateActiveGroup(state, (group) => ({
+    ...group,
+    broadcastMode: group.broadcastMode === "sticky" ? "off" : "sticky",
+  }));
+}
+
+export function setBroadcastMode(state: WorkspaceState, mode: BroadcastMode): WorkspaceState {
   return updateActiveGroup(state, (group) =>
-    group.broadcastMode === enabled ? group : { ...group, broadcastMode: enabled },
+    group.broadcastMode === mode ? group : { ...group, broadcastMode: mode },
   );
+}
+
+/** @deprecated Use toggleBroadcastOnce */
+export function toggleBroadcastMode(state: WorkspaceState): WorkspaceState {
+  return toggleBroadcastOnce(state);
 }
 
 export function setSplitDirection(state: WorkspaceState, splitDirection: SplitDirection): WorkspaceState {
@@ -906,7 +922,7 @@ function tabGroupFromSnapshot(snapshot: TabGroupSnapshot): TabGroup {
     layout,
     activePaneId,
     targetPaneId,
-    broadcastMode: snapshot.broadcastMode ?? false,
+    broadcastMode: normalizeBroadcastMode(snapshot.broadcastMode),
     defaultSplitDirection: snapshot.splitDirection === "row" ? "row" : "column",
   };
 }
@@ -968,7 +984,7 @@ function groupsFromLegacyLayout(
       layout: tree,
       activePaneId,
       targetPaneId: activePaneId,
-      broadcastMode: false,
+      broadcastMode: "off",
       defaultSplitDirection: layout.splitDirection === "row" ? "row" : "column",
     });
   }

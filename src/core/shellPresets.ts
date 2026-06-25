@@ -1,20 +1,18 @@
 import { formatShellCommandPreview } from "./shellProfiles";
+import { shellPresetsGet, shellPresetsSet, type ShellPreset } from "./terminal";
 
-export interface ShellPreset {
-  id: string;
-  name: string;
-  shell: string;
-  args: string[];
-}
+export type { ShellPreset };
 
-const STORAGE_KEY = "mach-terminal.shell-presets.v1";
+const LEGACY_STORAGE_KEY = "mach-terminal.shell-presets.v1";
 
-export function loadShellPresets(): ShellPreset[] {
+let cachedPresets: ShellPreset[] | null = null;
+
+function loadLegacyLocalStoragePresets(): ShellPreset[] {
   if (typeof window === "undefined") {
     return [];
   }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) {
       return [];
     }
@@ -34,33 +32,54 @@ export function loadShellPresets(): ShellPreset[] {
   }
 }
 
-export function saveShellPresets(presets: ShellPreset[]): void {
+function clearLegacyLocalStoragePresets(): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+  window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
+export async function fetchShellPresets(): Promise<ShellPreset[]> {
+  let presets = await shellPresetsGet();
+  const legacy = loadLegacyLocalStoragePresets();
+  if (presets.length === 0 && legacy.length > 0) {
+    presets = legacy;
+    await shellPresetsSet(presets);
+    clearLegacyLocalStoragePresets();
+  }
+  cachedPresets = presets;
+  return presets;
+}
+
+/** Returns the last fetched preset list; call `fetchShellPresets` on boot first. */
+export function loadShellPresets(): ShellPreset[] {
+  return cachedPresets ?? [];
 }
 
 export function createShellPresetId(): string {
   return `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function addShellPreset(preset: Omit<ShellPreset, "id"> & { id?: string }): ShellPreset[] {
+export async function addShellPreset(preset: Omit<ShellPreset, "id"> & { id?: string }): Promise<ShellPreset[]> {
   const next: ShellPreset = {
     id: preset.id ?? createShellPresetId(),
     name: preset.name.trim(),
     shell: preset.shell.trim(),
     args: [...preset.args],
+    cwd: preset.cwd,
+    env: preset.env,
   };
-  const presets = [...loadShellPresets(), next];
-  saveShellPresets(presets);
-  return presets;
+  const presets = [...(await fetchShellPresets()), next];
+  const saved = await shellPresetsSet(presets);
+  cachedPresets = saved;
+  return saved;
 }
 
-export function removeShellPreset(id: string): ShellPreset[] {
-  const presets = loadShellPresets().filter((preset) => preset.id !== id);
-  saveShellPresets(presets);
-  return presets;
+export async function removeShellPreset(id: string): Promise<ShellPreset[]> {
+  const presets = (await fetchShellPresets()).filter((preset) => preset.id !== id);
+  const saved = await shellPresetsSet(presets);
+  cachedPresets = saved;
+  return saved;
 }
 
 export function shellPresetPaletteId(presetId: string): string {

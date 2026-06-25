@@ -35,15 +35,17 @@ export function ShellProfilePicker({ shell, args, onChange }: ShellProfilePicker
   const [argsText, setArgsText] = useState(() => argsToLines(args));
   const lastPropagatedArgsRef = useRef<string[]>(args);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (options?: { force?: boolean }) => {
     if (!isTauri()) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      invalidateShellCandidatesCache();
-      setCandidates(await loadShellCandidates({ force: true }));
+      if (options?.force) {
+        invalidateShellCandidatesCache();
+      }
+      setCandidates(await loadShellCandidates({ force: options?.force }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to detect shells");
     } finally {
@@ -125,7 +127,7 @@ export function ShellProfilePicker({ shell, args, onChange }: ShellProfilePicker
         <span className="shell-profile-preview-label">Will run</span>
         <code>{formatShellCommandPreview(shell, args)}</code>
         {isTauri() ? (
-          <button type="button" className="inline-btn ghost" onClick={() => void reload()} disabled={loading}>
+          <button type="button" className="inline-btn ghost" onClick={() => void reload({ force: true })} disabled={loading}>
             {loading ? "Detecting…" : "Re-detect"}
           </button>
         ) : null}

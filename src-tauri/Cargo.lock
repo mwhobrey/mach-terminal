@@ -2265,6 +2265,8 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "windows",
+ "winreg 0.55.0",
 ]
 
 [[package]]

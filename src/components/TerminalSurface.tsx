@@ -6,11 +6,13 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import {
+  bufferLineIndexFromProviderLine,
   isSafeHttpUrlForOpener,
   isSafeLocalPathForOpener,
   mergeHttpAndFileLinksForLine,
+  xtermBufferRangeForScrapedSpan,
 } from "../core/terminalLinkRanges";
-import { activateTerminalLink } from "../core/terminalLinkActivation";
+import { activateTerminalLink, shouldActivateTerminalLink } from "../core/terminalLinkActivation";
 import {
   createPendingPasteState,
   pendingPasteGuardActionForKey,
@@ -306,8 +308,10 @@ export function TerminalSurface({
       terminal.write(chunk);
       if (pin) {
         terminal.scrollToBottom();
-        refreshTerminalViewport(terminal);
       }
+      // WebView2/xterm can stop repainting without refresh even when follow is off
+      // (tmux alternate screen, commander mode, throttled RAF while idle).
+      refreshTerminalViewport(terminal);
       if (pendingWriteRef.current.length > 0) {
         writeFrameRef.current = window.requestAnimationFrame(run);
       }
@@ -897,8 +901,8 @@ export function TerminalSurface({
       // helper is the allowlist.
       linkHandler: {
         allowNonHttpProtocols: true,
-        activate(_event, text) {
-          activateTerminalLink(text, { openUrl, openPath });
+        activate(event, text) {
+          activateTerminalLink(text, { openUrl, openPath }, event);
         },
       },
     });
@@ -942,7 +946,9 @@ export function TerminalSurface({
 
     const terminalLinkProvider: ILinkProvider = {
       provideLinks(bufferLineNumber, callback) {
-        const line = terminal.buffer.active.getLine(bufferLineNumber);
+        const line = terminal.buffer.active.getLine(
+          bufferLineIndexFromProviderLine(bufferLineNumber),
+        );
         if (!line) {
           callback(undefined);
           return;
@@ -953,17 +959,21 @@ export function TerminalSurface({
           callback(undefined);
           return;
         }
-        const y1 = bufferLineNumber + 1;
         const links: ILink[] = merged.map((entry) => {
+          const range = xtermBufferRangeForScrapedSpan(
+            bufferLineNumber,
+            entry.start,
+            entry.endExclusive,
+          );
           if (entry.kind === "http") {
             return {
               text: entry.url,
-              range: {
-                start: { x: entry.start + 1, y: y1 },
-                end: { x: entry.endExclusive, y: y1 },
-              },
+              range,
               decorations: { pointerCursor: true, underline: true },
-              activate(_event, urlText) {
+              activate(event, urlText) {
+                if (!shouldActivateTerminalLink(event)) {
+                  return;
+                }
                 if (isSafeHttpUrlForOpener(urlText)) {
                   void openUrl(urlText);
                 }
@@ -972,12 +982,12 @@ export function TerminalSurface({
           }
           return {
             text: entry.path,
-            range: {
-              start: { x: entry.start + 1, y: y1 },
-              end: { x: entry.endExclusive, y: y1 },
-            },
+            range,
             decorations: { pointerCursor: true, underline: true },
-            activate(_event, pathText) {
+            activate(event, pathText) {
+              if (!shouldActivateTerminalLink(event)) {
+                return;
+              }
               if (isSafeLocalPathForOpener(pathText)) {
                 void openPath(pathText).catch(() => {
                   /* opener failures are non-fatal; avoid toast spam */
@@ -1237,8 +1247,8 @@ export function TerminalSurface({
       terminal.write(activeBuffer);
       if (pin) {
         terminal.scrollToBottom();
-        refreshTerminalViewport(terminal);
       }
+      refreshTerminalViewport(terminal);
       const nextFollowOutput = isViewportAtBottom(terminal);
       wasViewportAtBottomRef.current = nextFollowOutput;
       setFollowOutput(nextFollowOutput);
@@ -1255,6 +1265,48 @@ export function TerminalSurface({
       pumpPendingTerminalWrites();
     }
   }, [activeSession, activeBuffer, emitUiSurfacePatch, pumpPendingTerminalWrites]);
+
+  /** Resume paint when the pane regains focus (tab swap) or the window becomes visible again. */
+  useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+    const id = window.requestAnimationFrame(() => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
+      }
+      if (pendingWriteRef.current.length > 0) {
+        pumpPendingTerminalWrites();
+      } else {
+        refreshTerminalViewport(terminal);
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isFocused, pumpPendingTerminalWrites]);
+
+  useEffect(() => {
+    const repaintWhenVisible = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
+      }
+      if (pendingWriteRef.current.length > 0) {
+        pumpPendingTerminalWrites();
+      } else {
+        refreshTerminalViewport(terminal);
+      }
+    };
+    document.addEventListener("visibilitychange", repaintWhenVisible);
+    window.addEventListener("focus", repaintWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", repaintWhenVisible);
+      window.removeEventListener("focus", repaintWhenVisible);
+    };
+  }, [pumpPendingTerminalWrites]);
 
   useEffect(() => {
     if (exitedInfo) {

@@ -33,7 +33,7 @@ Log results with [`ux-dogfood-log-template.md`](ux-dogfood-log-template.md).
 5. Use the in-app keyboard shortcut reference and confirm each shortcut triggers the intended action.
 6. Switch the active split pane and confirm the terminal accepts keystrokes without clicking inside the pane first (when focus already follows the active pane).
 7. Select terminal output, copy with `Ctrl/Cmd+Shift+C`, then paste into the shell with `Ctrl/Cmd+Shift+V` (including a short multiline paste).
-8. **Links:** `https://` opens in browser; absolute paths underline and open in the OS handler; Windows paths with spaces and UNC; compiler-style `path:line:col` links only the path portion; OSC 8 hyperlinks work; `javascript:` OSC 8 is a no-op.
+8. **Links:** Ctrl+click (Win/Linux) or Cmd+click (Mac) opens `https://` in browser and safe absolute paths in the OS handler; plain click selects only. Windows paths with spaces and UNC; compiler-style `path:line:col` links only the path portion; OSC 8 hyperlinks follow the same modifier rule; `javascript:` OSC 8 is a no-op.
 9. BEL character (`printf '\a'` / `Write-Host ([char]7)`) — brief visual flash on the terminal host.
 10. Find (`Ctrl/Cmd+Shift+F`): counter updates, whole word / regex toggles, prev/next, clear and close.
 11. Context menu: copy, paste, select all; dismiss on outside click or Escape.

@@ -50,6 +50,7 @@ export const DEFAULT_KEYMAP: ShortcutBinding[] = [
   { command: "pane.close", key: "w", ...modifierFlags() },
   { command: "pane.broadcast", key: "b", altKey: true, shiftKey: true },
   { command: "pane.broadcast", key: "b", shiftKey: true, ...modifierFlags() },
+  { command: "pane.broadcastSticky", key: "b", altKey: true, shiftKey: true, ...modifierFlags() },
   ...PANE_FOCUS_COMMANDS,
   ...PANE_TARGET_COMMANDS,
   { command: "palette.toggle", key: "k", ...modifierFlags() },
@@ -137,7 +138,13 @@ export function shouldBlockWorkspaceShortcut(target: EventTarget | null): boolea
 }
 
 /** Chords that must work while the composer or palette search field is focused. */
-const PANE_SHORTCUT_PREFIXES = ["pane.focus", "pane.target", "pane.split", "pane.close", "pane.broadcast"] as const;
+const PANE_SHORTCUT_PREFIXES = [
+  "pane.focus",
+  "pane.target",
+  "pane.split",
+  "pane.close",
+  "pane.broadcast",
+] as const;
 
 export const GLOBAL_SHORTCUT_COMMANDS: ReadonlySet<AppCommandId> = new Set([
   "palette.toggle",
@@ -149,6 +156,8 @@ export const GLOBAL_SHORTCUT_COMMANDS: ReadonlySet<AppCommandId> = new Set([
   "pane.split.row",
   "pane.close",
   "pane.broadcast",
+  "pane.broadcastSticky",
+  "pane.broadcastDisarm",
 ]);
 
 export function shortcutAllowedInTextField(command: AppCommandId): boolean {

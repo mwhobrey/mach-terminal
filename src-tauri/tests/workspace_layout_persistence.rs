@@ -112,7 +112,7 @@ fn workspace_layout_tree_group_round_trip() {
                 })),
             }),
             target_pane_id: Some("pane-2".to_string()),
-            broadcast_mode: Some(false),
+            broadcast_mode: Some("off".to_string()),
         }],
         active_group_id: Some("group-1".to_string()),
     };

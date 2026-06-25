@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  bufferLineIndexFromProviderLine,
   findAbsoluteFilePathsInLine,
   findHttpUrlsInLine,
   isSafeHttpUrlForOpener,
   isSafeLocalPathForOpener,
   mergeHttpAndFileLinksForLine,
+  xtermBufferRangeForScrapedSpan,
 } from "./terminalLinkRanges";
 
 describe("findHttpUrlsInLine", () => {
@@ -240,5 +242,30 @@ describe("mergeHttpAndFileLinksForLine", () => {
     const merged = mergeHttpAndFileLinksForLine(line);
     expect(merged.some((m) => m.kind === "file" && m.path === "\\\\server\\share\\logs\\build.log")).toBe(true);
     expect(merged.some((m) => m.kind === "http" && m.url === "https://a.test/x")).toBe(true);
+  });
+});
+
+describe("xterm link provider coordinates", () => {
+  it("maps 1-based provider line to 0-based buffer index", () => {
+    expect(bufferLineIndexFromProviderLine(1)).toBe(0);
+    expect(bufferLineIndexFromProviderLine(42)).toBe(41);
+  });
+
+  it("maps scraped column spans to 1-based xterm buffer ranges", () => {
+    const line = "Read https://example.com/docs and C:\\Users\\mike\\notes.txt for details.";
+    const merged = mergeHttpAndFileLinksForLine(line);
+    const http = merged.find((m) => m.kind === "http");
+    const file = merged.find((m) => m.kind === "file");
+    expect(http).toBeDefined();
+    expect(file).toBeDefined();
+
+    expect(xtermBufferRangeForScrapedSpan(1, http!.start, http!.endExclusive)).toEqual({
+      start: { x: 6, y: 1 },
+      end: { x: 29, y: 1 },
+    });
+    expect(xtermBufferRangeForScrapedSpan(1, file!.start, file!.endExclusive)).toEqual({
+      start: { x: 35, y: 1 },
+      end: { x: 57, y: 1 },
+    });
   });
 });

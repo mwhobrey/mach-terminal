@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
@@ -37,6 +37,20 @@ pub struct RestorableSession {
     pub input_mode: Option<String>,
 }
 
+fn deserialize_broadcast_mode_option<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    Ok(match value {
+        None => None,
+        Some(serde_json::Value::Bool(true)) => Some("once".to_string()),
+        Some(serde_json::Value::Bool(false)) => Some("off".to_string()),
+        Some(serde_json::Value::String(mode)) => Some(mode),
+        _ => Some("off".to_string()),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SplitNodeSnapshot {
@@ -68,8 +82,12 @@ pub struct TabGroupSnapshot {
     pub layout: Option<SplitNodeSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_pane_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub broadcast_mode: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_broadcast_mode_option"
+    )]
+    pub broadcast_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,6 +271,21 @@ pub struct ShellIntegrationBackupRestoreResult {
     pub restored_backup_id: String,
 }
 
+/// Saved shell launch profile for palette quick-open and Settings presets (TER-10).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellPreset {
+    pub id: String,
+    pub name: String,
+    pub shell: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default = "default_settings_schema_version")]
@@ -262,6 +295,8 @@ pub struct AppSettings {
     pub provider_routing: ProviderRoutingSettings,
     #[serde(default)]
     pub shell_integration: ShellIntegrationSettings,
+    #[serde(default)]
+    pub shell_presets: Vec<ShellPreset>,
 }
 
 impl Default for AppSettings {
@@ -297,6 +332,7 @@ impl Default for AppSettings {
             ],
             provider_routing: ProviderRoutingSettings::default(),
             shell_integration: ShellIntegrationSettings::default(),
+            shell_presets: Vec::new(),
         }
     }
 }
