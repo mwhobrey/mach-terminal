@@ -4,6 +4,25 @@ All notable changes to Mach Terminal are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0-rc.9] - 2026-06-25
+
+### Added
+
+- **TER-26:** Shared `ProviderAiProvidersPanel` — live per-field provider saves in Settings and onboarding advanced AI (`liveProviderSettings` from `useProviderAiState`).
+- **TER-27:** `typical_8kb_reads_do_not_hit_pending_cap` Rust baseline; `docs/phase2-perf-spike.md` automated go/no-go criteria.
+- **TER-28:** `workspaceFocus.smoke.test.ts`, `settingsPaletteCoordination.smoke.test.ts`, extended `providerUiState.smoke.test.ts`.
+- Canonical provider/AI status strings in `providerUiState.ts`; `surfaceErrorMessage()` for onboarding error parity.
+- Linear housekeeping scripts: `linear-create-ter-26-28.mjs`, `linear-close-ter-26-28.mjs`, `linear-close-ter-24-25.mjs`.
+
+### Fixed
+
+- **CI:** PTY pipeline perf gate runs in `--release` only (`npm run test:perf`); debug `npm test` / burn-in assert correctness without flaky MiB/s floors on GHA matrix runners.
+- **Security:** `quinn-proto` 0.11.15 (RUSTSEC-2026-0185), transitive via `reqwest` HTTP/3 stack.
+
+### Changed
+
+- `npm run test:perf` uses `--release` with 100 MiB/s throughput floor; debug runs log throughput but do not gate CI.
+
 ## [0.1.0-rc.8] - 2026-06-25
 
 ### Added

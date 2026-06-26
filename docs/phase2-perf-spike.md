@@ -1,6 +1,6 @@
 # Phase 2 perf spike (TER-27)
 
-> Status: **spike / profiling-gated** — do not ship semantic backpressure changes without measured pain post rc.8.
+> Status: **spike / profiling-gated** — do not ship semantic backpressure changes without measured pain post rc.9.
 
 ## Context
 
@@ -19,7 +19,7 @@ Rust unit test `typical_8kb_reads_do_not_hit_pending_cap` simulates 1000× 8 KB 
 
 **Go/no-go for Phase 2 code changes:** require `output_chunks_dropped > 0` in live diagnostics during dogfood flood *or* measured UI stall. Until then, defer coalesce/backpressure implementation.
 
-**Manual profiling checklist (rc.8):**
+**Manual profiling checklist (rc.9):**
 
 1. **Heavy output:** `yes | head -c 50M`, `cat huge.log`, `npm run build` in tmux (Commander mode).
 2. **Multi-tab:** 3+ tabs all streaming build output simultaneously.
@@ -42,7 +42,7 @@ Rust unit test `typical_8kb_reads_do_not_hit_pending_cap` simulates 1000× 8 KB 
 - `enqueue_output_chunk()` in `session_manager.rs` — explicit drop-oldest when `pending.len() > MAX_PENDING_CHUNKS`
 - Unit test `enqueue_output_chunk_drops_oldest_when_cap_exceeded` documents current semantics
 
-## Next steps after rc.8 bake
+## Next steps after rc.9 bake
 
 1. Dogfood with diagnostics open; capture counter snapshots under flood.
 2. If drops stay zero → defer A/B; only tune C if needed.
