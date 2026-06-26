@@ -14,7 +14,7 @@
     "test:invoke:smoke": "node scripts/invoke-smoke.mjs",
     "test:invoke:strict": "node scripts/invoke-smoke.mjs --strict",
     "test:pty": "cargo test --manifest-path src-tauri/Cargo.toml --tests",
-    "test:perf": "cargo test --manifest-path src-tauri/Cargo.toml --lib pty_byte_pipeline_round_trips -- --nocapture",
+    "test:perf": "cargo test --manifest-path src-tauri/Cargo.toml --release --lib pty_byte_pipeline_round_trips -- --nocapture",
     "security:npm": "npm audit --omit=dev --audit-level=high",
     "security:cargo": "cargo audit -f src-tauri/Cargo.lock",
     "security:gitleaks": "gitleaks detect --source . --verbose",
