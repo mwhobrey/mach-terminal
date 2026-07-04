@@ -4,7 +4,7 @@ All notable changes to Mach Terminal are documented in this file.
 
 ## [Unreleased]
 
-## [0.1.0-rc.10] - 2026-07-02
+## [0.1.0-rc.11] - 2026-07-03
 
 ### Added
 
@@ -19,6 +19,7 @@ All notable changes to Mach Terminal are documented in this file.
 ### Fixed
 
 - **Workspace split/tab:** Split inherits active pane shell/cwd; append-only `addNewSessionTab`; functional `setWorkspace` for split/new-tab; solo-tab `exit` closes tab; tab X uses fresh workspace ref; `reconcileWorkspaceInPlace` on session removal (no orphan-tab explosion).
+- **Security:** `v0.1.0-rc.10`'s release build was blocked by `cargo audit` on RUSTSEC-2026-0194/0195 (quick-xml <0.41, quadratic-parse/memory-exhaustion DoS). Transitive via `tauri` → `plist` → `quick-xml`, used only for our own build-time Info.plist, never untrusted XML at runtime; no `plist` release yet pulls a fixed `quick-xml`. Documented, scoped ignore added in `.cargo/audit.toml` pending an upstream fix.
 
 ## [0.1.0-rc.9] - 2026-06-25
 
