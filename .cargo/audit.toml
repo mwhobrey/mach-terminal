@@ -1,0 +1,10 @@
+[advisories]
+# RUSTSEC-2026-0194 / RUSTSEC-2026-0195: quadratic-time attribute parsing and
+# unbounded namespace-allocation DoS in quick-xml < 0.41.0. Pulled in transitively
+# via `plist` (tauri -> plist -> quick-xml), used only to read/write our own
+# build-time-authored Info.plist during macOS bundling — never to parse
+# externally-supplied or attacker-controlled XML at runtime. No upstream `plist`
+# release exists yet that requires quick-xml >=0.41 (latest plist 1.9.0 only
+# pulls quick-xml 0.39.4, still below the fixed version); revisit and drop this
+# ignore once it does (`cargo update -p plist --dry-run` in src-tauri/).
+ignore = ["RUSTSEC-2026-0194", "RUSTSEC-2026-0195"]
