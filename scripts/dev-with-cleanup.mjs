@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
-const DEV_PORT = Number.parseInt(process.env.MACH_TERMINAL_DEV_PORT ?? "1430", 10);
+const DEV_PORT = Number.parseInt(process.env.MACH_TERMINAL_DEV_PORT ?? "17430", 10);
 const DEV_HOST = process.env.MACH_TERMINAL_DEV_HOST ?? "127.0.0.1";
 
 function listListeningPidsForPort(port) {
