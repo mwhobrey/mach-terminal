@@ -12,7 +12,7 @@
 | **17430** | Vite / `tauri.devUrl` (override via `MACH_TERMINAL_DEV_PORT`) |
 | **17431** | Vite HMR when `TAURI_DEV_HOST` is set |
 | 17420 | Mach Triage Vite (sibling) |
-| 17447 | Mach Triage Raycast bridge |
+| 17847 | Mach Triage Raycast bridge |
 - **xterm.js** (`@xterm/xterm` v6) for terminal rendering, with `@xterm/addon-fit` (sizing) and `@xterm/addon-search` (find).
 - **Tauri JS API** (`@tauri-apps/api`) for `invoke`/`listen`; plugins `@tauri-apps/plugin-opener` (open links/files) and `@tauri-apps/plugin-updater`.
 - **No state library / no router.** State is React hooks in `App.tsx` + pure reducer-style helpers in `src/core/` and `src/state/`. No CSS framework — hand-rolled CSS in `src/App.css`.
